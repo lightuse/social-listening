@@ -8,7 +8,6 @@ import sys
 import os
 from datetime import datetime
 import logging
-import pytest
 
 # プロジェクトのパスを追加
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +23,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.asyncio
 async def test_youtube_api():
     """YouTube API接続テスト"""
     print("\n=== YouTube API 接続テスト ===")
@@ -59,7 +57,6 @@ async def test_youtube_api():
         return False
 
 
-@pytest.mark.asyncio
 async def test_reddit_api():
     """Reddit API接続テスト"""
     print("\n=== Reddit API 接続テスト ===")

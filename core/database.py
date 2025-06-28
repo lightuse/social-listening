@@ -1,4 +1,3 @@
-import asyncio
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, declarative_base
 from core.config import settings
