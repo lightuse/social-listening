@@ -78,35 +78,6 @@ async def get_comprehensive_report(
             logger.error(f"Error in platform analysis: {e}")
             platform_breakdown = {}
         
-        report = {
-            "generated_at": datetime.now().isoformat(),
-            "period": {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "days": days
-            },
-            "filters": {
-                "platform": platform,
-                "keyword": keyword
-            },
-            "summary": summary,
-            "sentiment_analysis": sentiment_analysis,
-            "platform_breakdown": platform_breakdown,
-            "platform_data": platform_breakdown,  # フロントエンド互換性（同じデータを使用）
-            "trending_topics": _extract_trending_topics(posts),
-            "engagement_metrics": _calculate_engagement_metrics(posts),
-            "time_series": _generate_time_series(posts, days),
-            "insights": []
-        }
-        # インサイトを生成
-        report["insights"] = _generate_insights(report)
-        
-        logger.info(f"Report generated successfully with {len(posts)} posts")
-        return report
-        
-    except Exception as e:
-        logger.error(f"Error generating comprehensive report: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"レポート生成エラー: {str(e)}")
         
         # トレンドトピック（ハッシュタグ分析）
         trending_query = """
