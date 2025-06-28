@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # API settings
     API_V1_STR: str = "/api/v1"
-    ALLOWED_HOSTS: List[str] = ["*"]
+    ALLOWED_HOSTS: List[str] = ["127.0.0.1", "localhost"]
 
     # Security settings
     SECRET_KEY: str = "your-secret-key-here"

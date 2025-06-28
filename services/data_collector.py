@@ -359,7 +359,7 @@ class RedditCollector:
                         'author': post['author'],
                         'author_followers': 0,
                         'url': f"https://reddit.com{post['permalink']}",
-                        'posted_at': datetime.fromtimestamp(post['created_utc']),
+                        'posted_at': datetime.fromtimestamp(post['created_utc'], tz=datetime.timezone.utc),
                         'collected_at': datetime.utcnow(),
                         'likes': post.get('ups', 0),
                         'shares': 0,

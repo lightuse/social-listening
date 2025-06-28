@@ -30,4 +30,4 @@ def get_db():
 
 async def init_db():
     """Initialize database"""
-    Base.metadata.create_all(bind=engine)
+    await asyncio.to_thread(Base.metadata.create_all, bind=engine)
