@@ -7,6 +7,7 @@ import sys
 import os
 import json
 import boto3
+import pytest
 from datetime import datetime
 
 # プロジェクトのパスを追加
@@ -57,6 +58,7 @@ def check_aws_settings():
     
     return all_set
 
+@pytest.mark.asyncio
 async def test_bedrock_connection():
     """Bedrockの基本接続テスト"""
     print("\n=== AWS Bedrock 接続テスト ===")
@@ -106,6 +108,7 @@ async def test_bedrock_connection():
         print(f"❌ Bedrock接続エラー: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_nova_lite_sentiment():
     """Amazon Nova Liteで感情分析テスト"""
     print("\n=== Amazon Nova Lite 感情分析テスト ===")
@@ -145,6 +148,7 @@ async def test_nova_lite_sentiment():
         print(f"❌ Nova Lite テストエラー: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_titan_embeddings():
     """Amazon Titan Text Embeddings テスト"""
     print("\n=== Amazon Titan Embeddings テスト ===")
@@ -228,6 +232,7 @@ def calculate_similarity(vec1, vec2):
     
     return dot_product / (magnitude1 * magnitude2)
 
+@pytest.mark.asyncio
 async def test_bedrock_report_generation():
     """Bedrockレポート生成テスト"""
     print("\n=== Bedrock レポート生成テスト ===")

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - Social Listening System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .back-link {
+            color: white;
+            text-decoration: none;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+        
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .faq-item {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .faq-question {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s;
+        }
+        
+        .faq-question:hover {
+            background: #e9ecef;
+        }
+        
+        .faq-question h3 {
+            font-size: 1.1em;
+            color: #667eea;
+        }
+        
+        .faq-toggle {
+            font-size: 1.2em;
+            color: #667eea;
+            transition: transform 0.3s;
+        }
+        
+        .faq-answer {
+            padding: 20px;
+            display: none;
+        }
+        
+        .faq-answer.show {
+            display: block;
+        }
+        
+        .faq-item.active .faq-toggle {
+            transform: rotate(45deg);
+        }
+        
+        .code-example {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .tip {
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .category {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            margin: 30px 0 20px 0;
+            border-radius: 25px;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-link">← ダッシュボードに戻る</a>
+            <h1>❓ よくある質問（FAQ）</h1>
+            <p>Social Listening Systemの使い方でお困りの際にご参照ください</p>
+        </div>
+
+        <div class="category">🚀 基本的な使い方</div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q1. アプリの使い方を教えてください</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>基本的な流れ:</strong></p>
+                <ol>
+                    <li>ブラウザで http://localhost:8002 にアクセス</li>
+                    <li>ダッシュボードで現在の状況を確認</li>
+                    <li>「キーワード」欄に興味のある単語を入力</li>
+                    <li>「分析開始」ボタンをクリック</li>
+                    <li>15-20分後に結果を確認</li>
+                </ol>
+                <div class="tip">
+                    <strong>💡 ヒント:</strong> 右下の「❓」ボタンをクリックすると詳細なヘルプが表示されます。
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q2. どんなキーワードを入力すればよいですか？</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>効果的なキーワード例:</strong></p>
+                <div class="code-example">
+                    ✅ 良い例：<br>
+                    • ChatGPT, 生成AI, AI技術<br>
+                    • iPhone15, Apple, 新型iPhone<br>
+                    • あなたの会社名, 商品名<br><br>
+                    
+                    ❌ 避けるべき例：<br>
+                    • AI（短すぎて関係ない投稿も拾う）<br>
+                    • 日本（範囲が広すぎる）
+                </div>
+                <div class="tip">
+                    <strong>💡 コツ:</strong> 複数のキーワードはカンマで区切って入力してください（例: AI技術, 機械学習, ChatGPT）
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q3. トレンドトピックの見方を教えてください</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>トレンドトピックの指標:</strong></p>
+                <ul>
+                    <li><strong>トレンドスコア</strong>: 数値が高いほど話題性が高い</li>
+                    <li><strong>活動レベル</strong>:
+                        <ul>
+                            <li>🔴 活発 = 過去24時間で多くの投稿</li>
+                            <li>🟡 普通 = 適度な投稿量</li>
+                            <li>🔵 低調 = 投稿が少ない</li>
+                        </ul>
+                    </li>
+                    <li><strong>感情チップ</strong>: 😊ポジティブ / 😞ネガティブ / 😐ニュートラル</li>
+                </ul>
+                <p>トピックをクリックすると詳細な分析結果が表示されます。</p>
+            </div>
+        </div>
+
+        <div class="category">🛠️ トラブルシューティング</div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q4. データが表示されません</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>解決方法を順番に試してください:</strong></p>
+                <ol>
+                    <li><strong>ページの再読み込み</strong>: F5キーまたはブラウザの更新ボタン</li>
+                    <li><strong>サンプルデータの確認</strong>: 初期状態ではサンプルデータが表示されるはずです</li>
+                    <li><strong>キーワードの変更</strong>: より一般的なキーワードに変更してみてください</li>
+                    <li><strong>時間をおいて再試行</strong>: サーバーが処理中の可能性があります</li>
+                </ol>
+                <div class="code-example">
+                    # コマンドラインでサンプルデータを追加
+                    python add_sample_data.py
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q5. 分析が遅い・止まってしまいます</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>パフォーマンス改善方法:</strong></p>
+                <ul>
+                    <li><strong>キーワード数を減らす</strong>: 5個以下に制限</li>
+                    <li><strong>期間を短くする</strong>: 過去7日以内に設定</li>
+                    <li><strong>プラットフォームを限定</strong>: TwitterのみなどToに絞る</li>
+                    <li><strong>時間をずらす</strong>: 混雑時間を避ける</li>
+                </ul>
+                <div class="warning">
+                    <strong>⚠️ 注意:</strong> 大量のデータを処理する場合、15-20分程度かかることがあります。
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q6. エラーメッセージが表示されます</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>よくあるエラーと対処法:</strong></p>
+                <ul>
+                    <li><strong>「データの読み込みに失敗しました」</strong> → ページを再読み込み</li>
+                    <li><strong>「APIエラー」</strong> → 少し時間をおいて再試行</li>
+                    <li><strong>「分析の開始に失敗」</strong> → キーワードを確認して再入力</li>
+                </ul>
+                <div class="code-example">
+                    # システム状態の確認
+                    curl http://localhost:8002/health
+                </div>
+                <p>エラーが続く場合は、Dockerコンテナを再起動してください。</p>
+            </div>
+        </div>
+
+        <div class="category">📊 データの解釈</div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q7. 感情分析の結果はどう読めばよいですか？</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>感情分析の種類:</strong></p>
+                <ul>
+                    <li><strong>🟢 ポジティブ</strong>: 好意的、肯定的、賞賛的な投稿</li>
+                    <li><strong>🔴 ネガティブ</strong>: 批判的、否定的、不満を表す投稿</li>
+                    <li><strong>🟡 ニュートラル</strong>: 中立的、事実的、感情的でない投稿</li>
+                </ul>
+                <div class="tip">
+                    <strong>💡 解釈のコツ:</strong>
+                    <ul>
+                        <li>ネガティブが30%を超えたら注意が必要</li>
+                        <li>ポジティブが70%を超えたら好評</li>
+                        <li>数値だけでなく、実際の投稿内容も確認する</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q8. どのプラットフォームのデータが信頼できますか？</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>プラットフォーム別の特徴:</strong></p>
+                <ul>
+                    <li><strong>Twitter</strong>:
+                        <ul>
+                            <li>✅ リアルタイム性が高い</li>
+                            <li>✅ 即座の反応を把握</li>
+                            <li>⚠️ 短いメッセージで文脈が不明な場合がある</li>
+                        </ul>
+                    </li>
+                    <li><strong>YouTube</strong>:
+                        <ul>
+                            <li>✅ 詳細なコメント</li>
+                            <li>✅ エンターテイメント関連に強い</li>
+                            <li>⚠️ 更新頻度が低い</li>
+                        </ul>
+                    </li>
+                    <li><strong>Reddit</strong>:
+                        <ul>
+                            <li>✅ 深い議論と分析</li>
+                            <li>✅ 技術的な話題に強い</li>
+                            <li>⚠️ 特定のコミュニティに偏る場合がある</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="category">🚀 高度な使い方</div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q9. APIを直接使って自動化したいです</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>API利用の基本:</strong></p>
+                <div class="code-example">
+                    # 感情分析結果の取得
+                    curl "http://localhost:8002/api/v1/sentiment/summary?days=7"
+                    
+                    # トレンドトピックの取得
+                    curl "http://localhost:8002/api/v1/trending-topics?limit=10"
+                    
+                    # 分析の開始
+                    curl -X POST "http://localhost:8002/api/v1/analyze" \
+                      -H "Content-Type: application/json" \
+                      -d '{"keywords": ["AI技術"], "platforms": ["twitter"]}'
+                </div>
+                <p>詳細は <a href="/docs" target="_blank">API仕様書</a> をご確認ください。</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q10. 定期的な監視を自動化したいです</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>自動化の例:</strong></p>
+                <div class="code-example">
+                    # cronで毎日12時に分析実行
+                    # crontab -e で追加
+                    0 12 * * * curl -X POST "http://localhost:8002/api/v1/analyze" \
+                      -H "Content-Type: application/json" \
+                      -d '{"keywords": ["あなたのブランド名"]}'
+                </div>
+                <p>Python スクリプトでより高度な自動化も可能です。</p>
+            </div>
+        </div>
+
+        <div class="category">🔗 その他</div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q11. このシステムの制限事項はありますか？</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>現在の制限事項:</strong></p>
+                <ul>
+                    <li>同時に処理できるキーワードは10個まで推奨</li>
+                    <li>分析には15-20分程度の時間が必要</li>
+                    <li>過去のデータは最大30日間まで</li>
+                    <li>リアルタイム更新は30秒間隔</li>
+                </ul>
+                <div class="warning">
+                    <strong>⚠️ 注意:</strong> 大量のリクエストを送信するとAPIレート制限に引っかかる可能性があります。
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+                <h3>Q12. さらに詳しいドキュメントはありますか？</h3>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p><strong>その他のリソース:</strong></p>
+                <ul>
+                    <li><a href="/" target="_blank">📊 メインダッシュボード</a></li>
+                    <li><a href="/reports" target="_blank">📈 包括的レポート</a></li>
+                    <li><a href="/docs" target="_blank">📚 API仕様書</a></li>
+                    <li><a href="/health" target="_blank">🏥 システム状態</a></li>
+                </ul>
+                <p>プロジェクトフォルダの <code>README.md</code> と <code>USAGE_GUIDE.md</code> にも詳細な情報があります。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleFaq(element) {
+            const faqItem = element.parentElement;
+            const answer = faqItem.querySelector('.faq-answer');
+            const toggle = element.querySelector('.faq-toggle');
+            
+            faqItem.classList.toggle('active');
+            answer.classList.toggle('show');
+            
+            if (answer.classList.contains('show')) {
+                toggle.textContent = '−';
+            } else {
+                toggle.textContent = '+';
+            }
+        }
+    </script>
+</body>
+</html>
