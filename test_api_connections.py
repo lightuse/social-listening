@@ -194,15 +194,13 @@ async def main():
     print("\n" + "="*50)
     print("API接続テスト実行中...")
     
-    # Twitter
-    results['twitter'] = await test_twitter_api()
+    results['twitter'] = await run_api_test('Twitter', test_twitter_api, "Bearer Tokenまたはアクセストークンを確認してください", "https://developer.twitter.com/")
+    results['youtube'] = await run_api_test('YouTube', test_youtube_api, "Google Cloud ConsoleでYouTube Data API v3が有効になっているか確認してください", "https://console.cloud.google.com/")
+    results['reddit'] = await run_api_test('Reddit', test_reddit_api, "アプリケーションがScript typeで作成されているか確認してください", "https://www.reddit.com/prefs/apps")
     
-    # YouTube
-    results['youtube'] = await test_youtube_api()
-    
-    # Reddit
-    results['reddit'] = await test_reddit_api()
-    
+    # Process and print the test results
+    process_test_results(results)
+
     # 結果サマリー
     print("\n" + "="*50)
     print("=== テスト結果サマリー ===")
@@ -240,6 +238,21 @@ async def main():
     
     print("\n詳細な設定手順: README.md を参照")
 
+async def run_api_test(platform_name, test_function, recommendation, url):
+    """Helper function to run an API test and print recommendations if it fails."""
+    print(f"Testing {platform_name} API...")
+    success = await test_function()
+    if not success:
+        print(f"• {platform_name}: {recommendation}")
+        print(f"  - {url}")
+
+    return success
+
+def process_test_results(results):
+    """Helper function to process and print test results."""
+    for platform, success in results.items():
+        status = "✅ 成功" if success else "❌ 失敗"
+        print(f"{platform.capitalize()}: {status}")
 
 if __name__ == "__main__":
     asyncio.run(main())
