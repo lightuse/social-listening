@@ -142,12 +142,12 @@ class BedrockSentimentEngine:
         for post in posts:
             try:
                 analysis = await self.analyze_sentiment(post.get("content", ""), keywords)
-                analysis["post_id"] = post.get("id")
+                analysis["post_id"] = post.get("external_id")
                 results.append(analysis)
             except Exception as e:
-                logger.error(f"Failed to analyze post {post.get('id')}: {e}")
+                logger.error(f"Failed to analyze post {post.get('external_id')}: {e}")
                 fallback = self._get_fallback_sentiment_analysis(post.get("content", ""))
-                fallback["post_id"] = post.get("id")
+                fallback["post_id"] = post.get("external_id")
                 results.append(fallback)
         
         return results
