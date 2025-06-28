@@ -191,7 +191,12 @@ async def test_titan_embeddings():
                 embeddings.append(embedding)
                 
                 print(f"  {i}. '{text}' → {len(embedding)}次元ベクトル")
-                print(f"     サンプル値: [{embedding[0]:.4f}, {embedding[1]:.4f}, ..., {embedding[-1]:.4f}]")
+                if len(embedding) >= 2:
+                    print(f"     サンプル値: [{embedding[0]:.4f}, {embedding[1]:.4f}, ..., {embedding[-1]:.4f}]")
+                elif len(embedding) == 1:
+                    print(f"     サンプル値: [{embedding[0]:.4f}]")
+                else:
+                    print(f"     サンプル値: 空のベクトル")
                 
             except Exception as e:
                 print(f"  ❌ エラー: {e}")
