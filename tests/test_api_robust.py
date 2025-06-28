@@ -30,9 +30,9 @@ def test_root_endpoint():
             # Check for any reasonable HTML content
             response_text = response.text.lower()
             assert "html" in response_text or "<!doctype" in response_text
-            print(f"✅ Root endpoint returned HTML content")
+            logging.info("✅ Root endpoint returned HTML content")
         else:
-            print(f"ℹ️ Root endpoint returned status {response.status_code} (likely missing static files)")
+            logging.info(f"ℹ️ Root endpoint returned status {response.status_code} (likely missing static files)")
             
     except Exception as e:
         pytest.skip(f"Root endpoint test failed: {e}")
