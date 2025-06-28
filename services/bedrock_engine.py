@@ -358,10 +358,20 @@ class BedrockSentimentEngine:
         return self._get_fallback_sentiment_analysis(response_text)
 
     def _extract_json_substrings(self, text: str) -> List[str]:
-        """Extract potential JSON substrings from text"""
-        import re
-        # Match JSON objects in the text
-        return re.findall(r'\{.*?\}', text, re.DOTALL)
+        """Extract valid JSON objects from text using a streaming JSON parser"""
+        from json import JSONDecoder
+        decoder = JSONDecoder()
+        pos = 0
+        json_objects = []
+        while pos < len(text):
+            try:
+                obj, index = decoder.raw_decode(text, pos)
+                json_objects.append(obj)
+                pos = index
+            except ValueError:
+                # Move to the next character if no valid JSON is found
+                pos += 1
+        return json_objects
     def _parse_report_response(self, response_text: str) -> Dict[str, Any]:
         """Parse AI report generation response"""
         try:
