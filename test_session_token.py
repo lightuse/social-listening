@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 AWS_SESSION_TOKEN 接続確認テスト
 元のprint形式 + pytest互換性追加版

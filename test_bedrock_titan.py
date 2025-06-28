@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 AWS Bedrock & Amazon Titan 動作確認スクリプト
 """

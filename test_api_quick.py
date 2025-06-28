@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Social Media API接続テストスクリプト（簡易版）
 TwitterのレートリミットをスキップしてYouTubeとRedditのみテスト

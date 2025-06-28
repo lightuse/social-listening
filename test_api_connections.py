@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Social Media API接続テストスクリプト
 各プラットフォームのAPI設定が正しく動作するかを確認します。

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 pytest形式のAWS_SESSION_TOKEN接続テスト
 """
