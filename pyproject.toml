@@ -46,6 +46,44 @@ target-version = ['py312']
 profile = "black"
 line_length = 88
 
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--verbose",
+    "--color=yes",
+    "--tb=short",
+]
+testpaths = [
+    "tests",
+    ".",
+]
+python_files = [
+    "test_*.py",
+    "*_test.py",
+]
+python_classes = [
+    "Test*",
+]
+python_functions = [
+    "test_*",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests", 
+    "aws: marks tests that require AWS credentials",
+    "bedrock: marks tests that require AWS Bedrock access",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:tweepy.*",
+    "ignore::DeprecationWarning:botocore.*",
+    "ignore:.*imghdr.*:DeprecationWarning",
+    "ignore:.*utcnow.*:DeprecationWarning:sqlalchemy.*",
+    "error::pytest.PytestUnknownMarkWarning",
+]
+
 [tool.uv]
 dev-dependencies = [
     "black>=23.0.0",

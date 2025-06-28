@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 AWS_SESSION_TOKEN 接続確認テスト
+元のprint形式 + pytest互換性追加版
 """
 
 import os
 import sys
 import boto3
+import pytest
 from pathlib import Path
 
 # プロジェクトのパスを追加
@@ -13,8 +15,9 @@ sys.path.append(str(Path(__file__).parent))
 
 from core.config import settings
 
+
 def test_aws_session_token():
-    """AWS_SESSION_TOKEN を使った接続テスト"""
+    """AWS_SESSION_TOKEN を使った接続テスト（元の関数 + アサーション追加）"""
     print("🔐 AWS_SESSION_TOKEN 接続テスト")
     print("=" * 50)
     
@@ -24,11 +27,18 @@ def test_aws_session_token():
     print(f"  AWS_ACCESS_KEY_ID: {'*' * 8}...{settings.AWS_ACCESS_KEY_ID[-4:]}")
     print(f"  AWS_SECRET_ACCESS_KEY: {'設定済み' if settings.AWS_SECRET_ACCESS_KEY else '未設定'}")
     
+    # pytest用アサーション
+    assert settings.AWS_REGION, "AWS_REGION が設定されていません"
+    assert settings.AWS_ACCESS_KEY_ID, "AWS_ACCESS_KEY_ID が設定されていません"
+    assert settings.AWS_SECRET_ACCESS_KEY, "AWS_SECRET_ACCESS_KEY が設定されていません"
+    
     # AWS_SESSION_TOKENの確認
     aws_session_token = getattr(settings, 'AWS_SESSION_TOKEN', '')
     if aws_session_token:
         print(f"  AWS_SESSION_TOKEN: {'*' * 8}...{aws_session_token[-10:]}")
         print("  🔄 一時的な認証情報を使用")
+        # pytest用アサーション
+        assert len(aws_session_token) >= 100, "AWS_SESSION_TOKEN の形式が無効です"
     else:
         print("  AWS_SESSION_TOKEN: 未設定")
         print("  🔒 永続的なIAM認証情報を使用")
@@ -56,6 +66,12 @@ def test_aws_session_token():
         print(f"  User ARN: {caller_identity.get('Arn', 'N/A')}")
         print(f"  User ID: {caller_identity.get('UserId', 'N/A')}")
         
+        # pytest用アサーション
+        assert "Account" in caller_identity, "Account情報が取得できません"
+        assert "Arn" in caller_identity, "ARN情報が取得できません"
+        account_id = caller_identity["Account"]
+        assert account_id.isdigit() and len(account_id) == 12, "Account IDの形式が無効です"
+        
         # Bedrockアクセステスト
         print("\n🧠 Bedrock アクセステスト:")
         bedrock_client = boto3.client("bedrock", **auth_kwargs)
@@ -66,6 +82,9 @@ def test_aws_session_token():
         
         print(f"✅ Bedrock接続成功! 利用可能モデル: {model_count}個")
         
+        # pytest用アサーション
+        assert model_count > 0, "利用可能なモデルが見つかりません"
+        
         # Nova/Titanモデルの確認
         nova_models = [m for m in models['modelSummaries'] if 'nova' in m['modelId'].lower()]
         titan_models = [m for m in models['modelSummaries'] if 'titan' in m['modelId'].lower()]
@@ -73,11 +92,21 @@ def test_aws_session_token():
         print(f"  🌟 Nova モデル: {len(nova_models)}個")
         print(f"  🔤 Titan モデル: {len(titan_models)}個")
         
+        # pytest用アサーション
+        assert len(nova_models) > 0, "Nova モデルが利用できません"
+        assert len(titan_models) > 0, "Titan モデルが利用できません"
+        
+        available_model_ids = [m['modelId'] for m in models['modelSummaries']]
+        
         if nova_models:
-            print(f"  📝 設定モデル '{settings.DEFAULT_MODEL}' 利用可能: {'✅' if settings.DEFAULT_MODEL in [m['modelId'] for m in models['modelSummaries']] else '❌'}")
+            model_available = settings.DEFAULT_MODEL in available_model_ids
+            print(f"  📝 設定モデル '{settings.DEFAULT_MODEL}' 利用可能: {'✅' if model_available else '❌'}")
+            assert model_available, f"設定されたモデル '{settings.DEFAULT_MODEL}' が利用できません"
         
         if titan_models:
-            print(f"  📝 埋め込みモデル '{settings.EMBEDDING_MODEL}' 利用可能: {'✅' if settings.EMBEDDING_MODEL in [m['modelId'] for m in models['modelSummaries']] else '❌'}")
+            embedding_available = settings.EMBEDDING_MODEL in available_model_ids
+            print(f"  📝 埋め込みモデル '{settings.EMBEDDING_MODEL}' 利用可能: {'✅' if embedding_available else '❌'}")
+            assert embedding_available, f"設定された埋め込みモデル '{settings.EMBEDDING_MODEL}' が利用できません"
         
         return True
         

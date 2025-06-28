@@ -3,7 +3,7 @@ import httpx
 import tweepy
 import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from core.config import settings
 
@@ -59,7 +59,7 @@ class TwitterCollector:
         try:
             # Use start_time if provided, otherwise last 7 days
             if not start_time:
-                start_time = datetime.utcnow() - timedelta(days=7)
+                start_time = datetime.now(timezone.utc) - timedelta(days=7)
             
             # Search tweets
             response = self.client.search_recent_tweets(
@@ -89,7 +89,7 @@ class TwitterCollector:
                     'author_followers': author.public_metrics['followers_count'] if author else 0,
                     'url': f"https://twitter.com/{author.username}/status/{tweet.id}" if author else '',
                     'posted_at': tweet.created_at,
-                    'collected_at': datetime.utcnow(),
+                    'collected_at': datetime.now(timezone.utc),
                     'likes': tweet.public_metrics.get('like_count', 0),
                     'shares': tweet.public_metrics.get('retweet_count', 0),
                     'comments': tweet.public_metrics.get('reply_count', 0),
@@ -225,7 +225,7 @@ class YouTubeCollector:
                         'author_followers': 0,  # Not available in API
                         'url': f"https://www.youtube.com/watch?v={video_id}",
                         'posted_at': datetime.fromisoformat(comment['publishedAt'].replace('Z', '+00:00')),
-                        'collected_at': datetime.utcnow(),
+                        'collected_at': datetime.now(timezone.utc),
                         'likes': comment.get('likeCount', 0),
                         'shares': 0,
                         'comments': 0,
@@ -360,7 +360,7 @@ class RedditCollector:
                         'author_followers': 0,
                         'url': f"https://reddit.com{post['permalink']}",
                         'posted_at': datetime.fromtimestamp(post['created_utc'], tz=datetime.timezone.utc),
-                        'collected_at': datetime.utcnow(),
+                        'collected_at': datetime.now(timezone.utc),
                         'likes': post.get('ups', 0),
                         'shares': 0,
                         'comments': post.get('num_comments', 0),
