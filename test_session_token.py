@@ -107,7 +107,7 @@ def test_aws_session_token():
             print(f"  📝 埋め込みモデル '{settings.EMBEDDING_MODEL}' 利用可能: {'✅' if embedding_available else '❌'}")
             assert embedding_available, f"設定された埋め込みモデル '{settings.EMBEDDING_MODEL}' が利用できません"
         
-        assert True  # Test passed
+        # Test passed
         
     except Exception as e:
         print(f"❌ AWS接続エラー: {e}")
