@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from core.config import settings
 
 
+@pytest.mark.aws
 class TestAWSSessionToken:
     """AWS_SESSION_TOKEN関連のテストクラス"""
 
@@ -85,6 +86,8 @@ class TestAWSSessionToken:
         models = response["modelSummaries"]
         assert len(models) > 0, "利用可能なモデルが見つかりません"
 
+    @pytest.mark.requires_aws
+    @pytest.mark.bedrock
     def test_nova_models_availability(self):
         """Nova モデルの利用可能性テスト"""
         auth_kwargs = {
@@ -110,6 +113,8 @@ class TestAWSSessionToken:
         assert settings.DEFAULT_MODEL in available_model_ids, \
             f"設定されたモデル '{settings.DEFAULT_MODEL}' が利用できません"
 
+    @pytest.mark.requires_aws
+    @pytest.mark.bedrock  
     def test_titan_models_availability(self):
         """Titan モデルの利用可能性テスト"""
         auth_kwargs = {

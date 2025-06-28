@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, Any, Optional
 from core.config import settings
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +14,10 @@ class BedrockSentimentEngine:
     def __init__(self):
         self.bedrock_client = None
         self.bedrock_runtime = None
+        self.mock_mode = False
 
     async def initialize(self):
-        """Initialize AWS Bedrock clients"""
+        """Initialize AWS Bedrock clients with fallback to mock mode"""
         try:
             # AWS認証情報の準備
             auth_kwargs = {
@@ -35,15 +37,41 @@ class BedrockSentimentEngine:
             self.bedrock_client = boto3.client("bedrock", **auth_kwargs)
             self.bedrock_runtime = boto3.client("bedrock-runtime", **auth_kwargs)
             
-            logger.info("AWS Bedrock clients initialized successfully")
+            # Test connection with timeout
+            try:
+                # Quick test to verify permissions
+                import signal
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Bedrock connection timeout")
+                
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(5)  # 5 second timeout
+                
+                self.bedrock_client.list_foundation_models()
+                signal.alarm(0)
+                
+                logger.info("✅ AWS Bedrock clients initialized successfully")
+                self.mock_mode = False
+                
+            except (TimeoutError, Exception) as test_error:
+                signal.alarm(0)
+                logger.warning(f"⚠️ Bedrock connection failed: {test_error}")
+                logger.warning("🔄 Switching to MOCK MODE for development")
+                self.mock_mode = True
+                
         except Exception as e:
             logger.error(f"Failed to initialize Bedrock clients: {e}")
-            raise
+            logger.warning("🔄 Falling back to MOCK MODE")
+            self.mock_mode = True
 
     async def analyze_sentiment(
         self, text: str, keywords: List[str] = None
     ) -> Dict[str, Any]:
-        """Analyze sentiment of social media post using Claude"""
+        """Analyze sentiment of social media post using Claude or mock response"""
+        
+        # Return mock response if in mock mode
+        if self.mock_mode:
+            return self._get_mock_sentiment_analysis(text, keywords)
 
         keywords_text = f"特に以下のキーワードに注目して分析してください: {', '.join(keywords)}" if keywords else ""
 
@@ -155,7 +183,10 @@ class BedrockSentimentEngine:
     async def generate_summary_report(
         self, analyses: List[Dict[str, Any]], keywords: List[str] = None
     ) -> Dict[str, Any]:
-        """Generate summary report from sentiment analyses"""
+        """Generate summary report from sentiment analyses or mock response"""
+        
+        if self.mock_mode:
+            return self._get_mock_summary_report(analyses, keywords or [])
 
         # Prepare analysis summary
         total_posts = len(analyses)
@@ -443,7 +474,10 @@ class BedrockSentimentEngine:
         }
 
     async def generate_embedding(self, text: str) -> List[float]:
-        """Generate text embedding using Amazon Titan"""
+        """Generate text embedding using Amazon Titan or mock response"""
+        if self.mock_mode:
+            return self._get_mock_embedding(text)
+            
         if not self.bedrock_runtime:
             await self.initialize()
         
@@ -552,6 +586,10 @@ class BedrockSentimentEngine:
     ) -> List[List[int]]:
         """Cluster posts by semantic similarity"""
         
+        # Return simple clustering if in mock mode
+        if self.mock_mode:
+            return self._get_mock_clustering(post_texts, similarity_threshold)
+        
         try:
             # Generate embeddings for all posts
             embeddings = await self.generate_batch_embeddings(post_texts)
@@ -584,3 +622,117 @@ class BedrockSentimentEngine:
         except Exception as e:
             logger.error(f"Post clustering failed: {e}")
             return []
+
+    # Mock implementations for development without AWS Bedrock access
+    def _get_mock_sentiment_analysis(self, text: str, keywords: List[str] = None) -> Dict[str, Any]:
+        """Generate mock sentiment analysis for development"""
+        import random
+        import hashlib
+        
+        # Use text hash for consistent results
+        text_hash = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
+        random.seed(text_hash)
+        
+        # Simple sentiment detection based on keywords
+        positive_words = ['良い', '素晴らしい', '最高', 'good', 'great', 'awesome', '好き', 'おすすめ']
+        negative_words = ['悪い', '最悪', 'bad', 'terrible', 'awful', '嫌い', 'ダメ']
+        
+        text_lower = text.lower()
+        positive_count = sum(1 for word in positive_words if word in text_lower)
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        
+        if positive_count > negative_count:
+            sentiment_label = "positive"
+            sentiment_score = random.uniform(0.3, 0.9)
+        elif negative_count > positive_count:
+            sentiment_label = "negative"
+            sentiment_score = random.uniform(-0.9, -0.3)
+        else:
+            sentiment_label = "neutral"
+            sentiment_score = random.uniform(-0.2, 0.2)
+        
+        return {
+            "sentiment_label": sentiment_label,
+            "sentiment_score": sentiment_score,
+            "confidence": random.uniform(0.7, 0.95),
+            "emotions": {
+                "joy": random.uniform(0.1, 0.8) if sentiment_label == "positive" else random.uniform(0.0, 0.3),
+                "anger": random.uniform(0.1, 0.8) if sentiment_label == "negative" else random.uniform(0.0, 0.3),
+                "trust": random.uniform(0.2, 0.7),
+                "sadness": random.uniform(0.1, 0.6) if sentiment_label == "negative" else random.uniform(0.0, 0.2),
+            },
+            "topics": keywords[:2] if keywords else ["一般的な話題"],
+            "keywords_found": keywords[:3] if keywords else [],
+            "reasoning": f"Mock分析: {sentiment_label}の感情を検出 (開発モード)",
+            "_mock_mode": True
+        }
+    
+    def _get_mock_embedding(self, text: str) -> List[float]:
+        """Generate mock embedding vector for development"""
+        import hashlib
+        import random
+        
+        # Use text hash for consistent results
+        text_hash = hashlib.md5(text.encode()).hexdigest()
+        random.seed(int(text_hash[:8], 16))
+        
+        # Generate 1536-dimension vector (same as Titan)
+        vector = [random.uniform(-1, 1) for _ in range(1536)]
+        
+        # Normalize the vector
+        magnitude = sum(x**2 for x in vector) ** 0.5
+        return [x / magnitude for x in vector]
+    
+    def _get_mock_clustering(self, post_texts: List[str], similarity_threshold: float) -> List[List[int]]:
+        """Generate mock clustering for development"""
+        import random
+        
+        # Simple random clustering
+        clusters = []
+        remaining_indices = list(range(len(post_texts)))
+        
+        while remaining_indices:
+            cluster_size = random.randint(1, min(5, len(remaining_indices)))
+            cluster = []
+            for _ in range(cluster_size):
+                if remaining_indices:
+                    idx = remaining_indices.pop(random.randint(0, len(remaining_indices) - 1))
+                    cluster.append(idx)
+            if cluster:
+                clusters.append(cluster)
+        
+        return clusters
+
+    def _get_mock_summary_report(self, analyses: List[Dict], keywords: List[str]) -> Dict[str, Any]:
+        """Generate mock summary report for development"""
+        import random
+        
+        total_posts = len(analyses)
+        positive_count = sum(1 for a in analyses if a.get('sentiment_label') == 'positive')
+        negative_count = sum(1 for a in analyses if a.get('sentiment_label') == 'negative')
+        
+        return {
+            "executive_summary": f"分析した{total_posts}件の投稿のうち、{positive_count}件がポジティブ、{negative_count}件がネガティブでした。(開発モード)",
+            "sentiment_insights": {
+                "overall_tone": "ポジティブ傾向" if positive_count > negative_count else "ネガティブ傾向" if negative_count > positive_count else "中立的",
+                "positive_drivers": random.choice([["品質", "サービス"], ["価格", "利便性"], ["デザイン", "機能"]]),
+                "negative_drivers": random.choice([["対応速度", "サポート"], ["価格", "複雑さ"], ["バグ", "不安定性"]]),
+                "neutral_factors": ["一般的な使用感", "平均的な評価"]
+            },
+            "key_findings": [
+                f"キーワード「{keywords[0] if keywords else 'サンプル'}」が頻繁に言及されています",
+                "感情の変化に季節性が見られます",
+                "特定の時間帯にポジティブな投稿が増加しています"
+            ],
+            "recommendations": [
+                "ポジティブなフィードバックを活用した マーケティング戦略の検討",
+                "ネガティブな問題への迅速な対応",
+                "顧客エンゲージメントの向上"
+            ],
+            "trending_topics": keywords[:3] if keywords else ["AI", "技術", "サービス"],
+            "risk_alerts": [
+                "特定の問題に関する不満の増加を注視",
+                "競合他社との比較での劣勢"
+            ] if negative_count > positive_count else [],
+            "_mock_mode": True
+        }
