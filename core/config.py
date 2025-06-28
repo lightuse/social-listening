@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: List[str] = ["127.0.0.1", "localhost"]
 
     # Security settings
-    SECRET_KEY: str = "your-secret-key-here"
+    SECRET_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Social Media API settings
