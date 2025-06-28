@@ -107,35 +107,6 @@ async def get_comprehensive_report(
     except Exception as e:
         logger.error(f"Error generating comprehensive report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"レポート生成エラー: {str(e)}")
-        platform_query = """
-        SELECT 
-            platform,
-            COUNT(*) as posts_count,
-            AVG(CASE WHEN sa.sentiment_label = 'positive' THEN 1 ELSE 0 END) * 100 as positive_rate,
-            AVG((likes + shares + comments)) as avg_engagement
-        FROM posts p
-        LEFT JOIN sentiment_analyses sa ON p.id = sa.post_id
-        WHERE p.collected_at >= ? AND p.collected_at <= ?
-        """
-        
-        params = [start_date.isoformat(), end_date.isoformat()]
-        if platform:
-            platform_query += " AND p.platform = ?"
-            params.append(platform)
-        platform_query += " GROUP BY p.platform"
-        
-        cursor.execute(platform_query, params)
-        platform_data = cursor.fetchall()
-        
-        platform_breakdown = {}
-        for row in platform_data:
-            platform_breakdown[row[0]] = {
-                "posts_count": row[1],
-                "positive_rate": round(row[2] or 0, 2),
-                "average_engagement": round(row[3] or 0, 2)
-            }
-        
-        report["platform_breakdown"] = platform_breakdown
         
         # トレンドトピック（ハッシュタグ分析）
         trending_query = """
