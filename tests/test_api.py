@@ -9,10 +9,14 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from main import app
 
-client = TestClient(app)
+
+@pytest.fixture
+def client(override_get_db):
+    """Test client with database override"""
+    return TestClient(app)
 
 
-def test_root_endpoint():
+def test_root_endpoint(client):
     """Test root endpoint"""
     response = client.get("/")
     assert response.status_code in [200, 500]  # 500 if static file not found
@@ -32,7 +36,7 @@ def test_root_endpoint():
         print(f"Static file not found, received status: {response.status_code}")
 
 
-def test_health_check():
+def test_health_check(client):
     """Test health check endpoint"""
     response = client.get("/health")
     assert response.status_code == 200
@@ -41,7 +45,7 @@ def test_health_check():
     assert data["service"] == "social-listening"
 
 
-def test_system_status():
+def test_system_status(client):
     """Test system status endpoint"""
     response = client.get("/api/v1/system/status")
     # This endpoint might not exist, so check for 200 or 404
@@ -54,7 +58,7 @@ def test_system_status():
         print(f"System status endpoint not found: {response.status_code}")
 
 
-def test_keywords_endpoint():
+def test_keywords_endpoint(client):
     """Test keywords listing endpoint"""
     response = client.get("/api/v1/keywords")
     # This endpoint exists in analysis.py
@@ -68,7 +72,7 @@ def test_keywords_endpoint():
         print(f"Keywords endpoint returned status: {response.status_code}")
 
 
-def test_create_keyword():
+def test_create_keyword(client):
     """Test keyword creation"""
     import uuid
     # Use a unique term to avoid conflicts
@@ -108,7 +112,7 @@ def test_create_keyword():
         print("Request validation error")
 
 
-def test_create_duplicate_keyword():
+def test_create_duplicate_keyword(client):
     """Test that creating duplicate keywords returns 400"""
     import uuid
     unique_term = f"duplicate_test_{uuid.uuid4().hex[:8]}"
@@ -135,7 +139,7 @@ def test_create_duplicate_keyword():
         print(f"Skipping duplicate test due to first creation failure: {first_response.status_code}")
 
 
-def test_create_keyword_invalid_data():
+def test_create_keyword_invalid_data(client):
     """Test keyword creation with invalid data"""
     # Test with missing required field
     invalid_data = {
@@ -157,7 +161,7 @@ def test_create_keyword_invalid_data():
         assert "field required" in str(error_data).lower() or "term" in str(error_data).lower()
 
 
-def test_posts_endpoint():
+def test_posts_endpoint(client):
     """Test posts listing endpoint"""
     response = client.get("/api/v1/posts")
     assert response.status_code in [200, 422, 500]
@@ -169,7 +173,7 @@ def test_posts_endpoint():
         print(f"Posts endpoint returned status: {response.status_code}")
 
 
-def test_sentiment_summary_endpoint():
+def test_sentiment_summary_endpoint(client):
     """Test sentiment summary endpoint"""
     response = client.get("/api/v1/sentiment/summary")
     assert response.status_code in [200, 422, 500]
@@ -181,7 +185,7 @@ def test_sentiment_summary_endpoint():
         print(f"Sentiment summary endpoint returned status: {response.status_code}")
 
 
-def test_trending_topics_endpoint():
+def test_trending_topics_endpoint(client):
     """Test trending topics endpoint"""
     response = client.get("/api/v1/trending-topics")
     assert response.status_code in [200, 422, 500]
@@ -207,7 +211,7 @@ async def test_sentiment_analysis():
     assert result["sentiment_score"] > 0
 
 
-def test_api_documentation():
+def test_api_documentation(client):
     """Test API documentation endpoint"""
     response = client.get("/docs")
     assert response.status_code == 200
