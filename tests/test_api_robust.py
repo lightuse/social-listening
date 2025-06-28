@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 import os
 import sys
+import logging
 from pathlib import Path
 
 # プロジェクトのパスを追加

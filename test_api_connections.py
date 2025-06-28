@@ -8,6 +8,7 @@ import sys
 import os
 from datetime import datetime
 import logging
+import pytest
 
 # プロジェクトのパスを追加
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.asyncio
 async def test_twitter_api():
     """Twitter API接続テスト"""
     print("\n=== Twitter API 接続テスト ===")
@@ -61,6 +63,7 @@ async def test_twitter_api():
         return False
 
 
+@pytest.mark.asyncio
 async def test_youtube_api():
     """YouTube API接続テスト"""
     print("\n=== YouTube API 接続テスト ===")
@@ -94,7 +97,7 @@ async def test_youtube_api():
         print(f"❌ YouTube API 接続エラー: {e}")
         return False
 
-
+@pytest.mark.asyncio
 async def test_reddit_api():
     """Reddit API接続テスト"""
     print("\n=== Reddit API 接続テスト ===")
@@ -193,7 +196,7 @@ async def main():
     print("\n" + "="*50)
     print("API接続テスト実行中...")
     
-    results['twitter'] = await run_api_test('Twitter', test_twitter_api, "Bearer Tokenまたはアクセストークンを確認してください", "https://developer.twitter.com/")
+    #results['twitter'] = await run_api_test('Twitter', test_twitter_api, "Bearer Tokenまたはアクセストークンを確認してください", "https://developer.twitter.com/")
     results['youtube'] = await run_api_test('YouTube', test_youtube_api, "Google Cloud ConsoleでYouTube Data API v3が有効になっているか確認してください", "https://console.cloud.google.com/")
     results['reddit'] = await run_api_test('Reddit', test_reddit_api, "アプリケーションがScript typeで作成されているか確認してください", "https://www.reddit.com/prefs/apps")
 

@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>包括的レポート - Social Listening System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+          .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .header-nav {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .nav-link:hover, .nav-link.active {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: white;
+            transform: translateY(-2px);
+        }
+        
+        .controls {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin-bottom: 30px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .control-group label {
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9em;
+        }
+        
+        .control-group select,
+        .control-group input,
+        .control-group button {
+            padding: 10px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-export {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .report-section {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px 25px;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+        
+        .section-content {
+            padding: 25px;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .summary-card h3 {
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+        
+        .summary-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .sentiment-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .sentiment-card {
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .sentiment-positive { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
+        .sentiment-negative { background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%); color: white; }
+        .sentiment-neutral { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color: #333; }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .insights-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .insight-item {
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+        }
+        
+        .insight-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .insight-high { border-left-color: #ff4b2b; }
+        .insight-medium { border-left-color: #ffa726; }
+        .insight-low { border-left-color: #66bb6a; }
+        
+        .insight-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .insight-description {
+            color: #666;
+            font-size: 0.95em;
+        }
+          .trending-topics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 15px;
+        }
+        
+        .trending-item {
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #fff 100%);
+            border-radius: 12px;
+            border: 1px solid #e1e8ed;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .trending-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+        
+        .trending-keyword {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .trending-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.9em;
+        }
+        
+        .trending-stats span {
+            color: #666;
+            padding: 2px 0;
+        }
+        
+        .dominant-sentiment {
+            background: #e8f4f8;
+            color: #2c5282;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 500;
+            width: fit-content;
+        }
+        
+        .platform-breakdown {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .platform-card {
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 12px;
+            border: 1px solid #e1e8ed;
+        }
+        
+        .platform-name {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 10px;
+            text-transform: capitalize;
+        }
+        
+        .platform-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.9em;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #ffcdd2;
+        }
+        
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .control-group {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">        <div class="header">
+            <h1>📊 包括的レポート</h1>
+            <p>ソーシャルメディア分析の詳細レポート</p>
+            <div class="header-nav">
+                <a href="/" class="nav-link">📊 ダッシュボード</a>
+                <a href="/reports" class="nav-link active">📈 包括的レポート</a>
+                <a href="/docs" class="nav-link">📚 API</a>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="daysSelect">期間</label>
+                <select id="daysSelect">
+                    <option value="1">過去1日</option>
+                    <option value="3">過去3日</option>
+                    <option value="7" selected>過去7日</option>
+                    <option value="14">過去14日</option>
+                    <option value="30">過去30日</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="platformSelect">プラットフォーム</label>
+                <select id="platformSelect">
+                    <option value="">全プラットフォーム</option>
+                    <option value="twitter">Twitter</option>
+                    <option value="youtube">YouTube</option>
+                    <option value="reddit">Reddit</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <button class="btn-primary" onclick="generateReport()">レポート生成</button>
+                <button class="btn-export" onclick="exportReport('json')">JSON</button>
+                <button class="btn-export" onclick="exportReport('csv')">CSV</button>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="loading" style="display: none;">
+            <p>📈 レポートを生成中...</p>
+        </div>
+
+        <div id="errorMessage" class="error" style="display: none;"></div>
+
+        <div id="reportContent" style="display: none;">
+            <!-- サマリーセクション -->
+            <div class="report-section">
+                <div class="section-header">📈 概要</div>
+                <div class="section-content">
+                    <div class="summary-grid" id="summaryGrid"></div>
+                </div>
+            </div>
+
+            <!-- 感情分析セクション -->
+            <div class="report-section">
+                <div class="section-header">😊 感情分析</div>
+                <div class="section-content">
+                    <div class="sentiment-grid" id="sentimentGrid"></div>
+                    <div class="chart-container">
+                        <canvas id="sentimentChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- プラットフォーム分析セクション -->
+            <div class="report-section">
+                <div class="section-header">🌐 プラットフォーム別分析</div>
+                <div class="section-content">
+                    <div class="platform-breakdown" id="platformBreakdown"></div>
+                </div>
+            </div>
+
+            <!-- トレンドトピックセクション -->
+            <div class="report-section">
+                <div class="section-header">🔥 トレンドトピック</div>
+                <div class="section-content">
+                    <div class="trending-topics" id="trendingTopics"></div>
+                </div>
+            </div>
+
+            <!-- インサイトセクション -->
+            <div class="report-section">
+                <div class="section-header">💡 インサイト</div>
+                <div class="section-content">
+                    <div class="insights-list" id="insightsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentReport = null;
+        let sentimentChart = null;
+
+        // ページロード時に初期レポートを生成
+        document.addEventListener('DOMContentLoaded', function() {
+            generateReport();
+        });        
+        async function generateReport() {
+            const days = document.getElementById('daysSelect').value;
+            const platform = document.getElementById('platformSelect').value;
+            
+            showLoading(true);
+            hideError();
+            
+            try {
+                let url = `/api/v1/reports/comprehensive-report?days=${days}`;
+                if (platform && platform !== '' && platform !== 'all') {
+                    url += `&platform=${encodeURIComponent(platform)}`;
+                }
+                
+                console.log('API URL:', url); // デバッグ用
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API Error Response:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+                }
+                
+                currentReport = await response.json();
+                displayReport(currentReport);
+                
+            } catch (error) {
+                console.error('レポート生成エラー:', error);
+                showError('レポートの生成に失敗しました: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }        
+        function displayReport(report) {
+            // サマリー表示
+            if (report.summary) {
+                displaySummary(report.summary);
+            }
+            
+            // 感情分析表示
+            if (report.sentiment_analysis && report.summary && report.summary.sentiment_distribution) {
+                displaySentimentAnalysis(report.sentiment_analysis, report.summary.sentiment_distribution);
+            }
+            
+            // プラットフォーム分析表示 - platform_data または platform_breakdown を使用
+            const platformData = report.platform_data || report.platform_breakdown || {};
+            displayPlatformBreakdown(platformData);
+            
+            // トレンドトピック表示
+            if (report.trending_topics) {
+                displayTrendingTopics(report.trending_topics);
+            }
+            
+            // インサイト表示
+            if (report.insights) {
+                displayInsights(report.insights);
+            }
+            
+            // レポートコンテンツを表示
+            document.getElementById('reportContent').style.display = 'block';
+        }function displaySummary(summary) {
+            const summaryGrid = document.getElementById('summaryGrid');
+            summaryGrid.innerHTML = `<div class="summary-card">
+                    <h3>総投稿数</h3>
+                    <div class="number">${Number(summary.total_posts || 0).toLocaleString()}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>監視プラットフォーム</h3>
+                    <div class="number">${summary.platforms_monitored || 0}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>ポジティブ率</h3>
+                    <div class="number">${(summary.sentiment_distribution?.positive || 0).toFixed(1)}%</div>
+                </div>
+                <div class="summary-card">
+                    <h3>ネガティブ率</h3>
+                    <div class="number">${(summary.sentiment_distribution?.negative || 0).toFixed(1)}%</div>
+                </div>
+            `;
+        }
+
+        function displaySentimentAnalysis(sentimentData, sentimentDist) {
+            const sentimentGrid = document.getElementById('sentimentGrid');
+            sentimentGrid.innerHTML = `
+                <div class="sentiment-card sentiment-positive">
+                    <h3>ポジティブ</h3>
+                    <div class="number">${sentimentData.positive?.count || 0}</div>
+                    <div>信頼度: ${sentimentData.positive?.average_confidence || 0}%</div>
+                </div>
+                <div class="sentiment-card sentiment-negative">
+                    <h3>ネガティブ</h3>
+                    <div class="number">${sentimentData.negative?.count || 0}</div>
+                    <div>信頼度: ${sentimentData.negative?.average_confidence || 0}%</div>
+                </div>
+                <div class="sentiment-card sentiment-neutral">
+                    <h3>ニュートラル</h3>
+                    <div class="number">${sentimentData.neutral?.count || 0}</div>
+                    <div>信頼度: ${sentimentData.neutral?.average_confidence || 0}%</div>
+                </div>
+            `;
+
+            // 感情分析チャート
+            const ctx = document.getElementById('sentimentChart').getContext('2d');
+            
+            if (sentimentChart) {
+                sentimentChart.destroy();
+            }
+            
+            sentimentChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['ポジティブ', 'ネガティブ', 'ニュートラル'],
+                    datasets: [{
+                        data: [
+                            sentimentDist.positive,
+                            sentimentDist.negative,
+                            sentimentDist.neutral
+                        ],
+                        backgroundColor: [
+                            'rgba(56, 239, 125, 0.8)',
+                            'rgba(255, 75, 43, 0.8)',
+                            'rgba(252, 182, 159, 0.8)'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }        
+        function displayPlatformBreakdown(platformData) {
+            const platformBreakdown = document.getElementById('platformBreakdown');
+            let html = '';
+            
+            if (!platformData || Object.keys(platformData).length === 0) {
+                platformBreakdown.innerHTML = '<p>プラットフォームデータがありません</p>';
+                return;
+            }
+            
+            for (const [platform, data] of Object.entries(platformData)) {
+                html += `
+                    <div class="platform-card">
+                        <div class="platform-name">${platform}</div>
+                        <div class="platform-stats">
+                            <div>投稿数: ${Number(data.posts_count || 0).toLocaleString()}</div>
+                            <div>ポジティブ率: ${(data.positive_rate || 0).toFixed(1)}%</div>
+                            <div>平均エンゲージメント: ${data.average_engagement || 0}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            platformBreakdown.innerHTML = html || '<p>プラットフォームデータがありません</p>';
+        }        function displayTrendingTopics(trendingData) {
+            const trendingTopics = document.getElementById('trendingTopics');
+            
+            console.log('displayTrendingTopics called with:', trendingData);
+            
+            if (!trendingData || !Array.isArray(trendingData) || trendingData.length === 0) {
+                console.log('No valid trending data available');
+                trendingTopics.innerHTML = '<p>トレンドデータがありません</p>';
+                return;
+            }
+            
+            let html = '';
+            
+            trendingData.forEach((topic, index) => {
+                console.log(`Processing topic ${index}:`, topic);
+                
+                // 各フィールドを安全に抽出
+                const topicName = String(topic.topic || topic.keywords || 'Unknown Topic');
+                const frequency = parseInt(topic.frequency) || 0;
+                const sentimentBreakdown = topic.sentiment_breakdown || {};
+                const positiveRate = parseFloat(sentimentBreakdown.positive) || 0;
+                const dominantSentiment = String(topic.dominant_sentiment || 'neutral');
+                
+                console.log(`Topic: "${topicName}", Frequency: ${frequency}, Positive Rate: ${positiveRate}%, Sentiment: ${dominantSentiment}`);
+                
+                // 感情アイコンの選択
+                let sentimentIcon = '😐';
+                if (dominantSentiment === 'positive') {
+                    sentimentIcon = '😊';
+                } else if (dominantSentiment === 'negative') {
+                    sentimentIcon = '�';
+                }
+                
+                // HTMLの構築
+                html += `
+                    <div class="trending-item">
+                        <div class="trending-keyword">
+                            ${sentimentIcon} ${topicName}
+                        </div>
+                        <div class="trending-stats">
+                            <span>頻度: ${frequency.toLocaleString()}</span>
+                            <span>ポジティブ率: ${positiveRate.toFixed(1)}%</span>
+                            <span class="dominant-sentiment">主要感情: ${dominantSentiment}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            trendingTopics.innerHTML = html;
+            console.log('Trending topics HTML updated');
+        }
+
+        function displayInsights(insights) {
+            const insightsList = document.getElementById('insightsList');
+            let html = '';
+            
+            insights.forEach(insight => {
+                html += `
+                    <div class="insight-item insight-${insight.priority}">
+                        <div class="insight-title">${insight.title}</div>
+                        <div class="insight-description">${insight.description}</div>
+                    </div>
+                `;
+            });
+            
+            insightsList.innerHTML = html || '<p>インサイトがありません</p>';
+        }
+
+        async function exportReport(format) {
+            if (!currentReport) {
+                alert('先にレポートを生成してください');
+                return;
+            }
+            
+            try {
+                const days = document.getElementById('daysSelect').value;
+                const response = await fetch(`/api/v1/reports/export-report?format=${format}&days=${days}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Export failed: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (format === 'csv') {
+                    downloadCSV(data.data, `social_listening_report_${new Date().toISOString().split('T')[0]}.csv`);
+                } else {
+                    downloadJSON(data, `social_listening_report_${new Date().toISOString().split('T')[0]}.json`);
+                }
+                
+            } catch (error) {
+                console.error('Export error:', error);
+                alert('エクスポートに失敗しました: ' + error.message);
+            }
+        }
+
+        function downloadCSV(csvData, filename) {
+            const blob = new Blob([csvData], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function downloadJSON(jsonData, filename) {
+            const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+            document.getElementById('reportContent').style.display = show ? 'none' : 'block';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
