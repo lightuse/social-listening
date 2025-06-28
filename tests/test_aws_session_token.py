@@ -153,20 +153,7 @@ class TestAWSSessionToken:
         assert bedrock_runtime is not None, "Bedrock Runtime クライアントの作成に失敗しました"
 
 
-@pytest.fixture
-def aws_credentials():
-    """AWS認証情報のフィクスチャ"""
-    auth_kwargs = {
-        "region_name": settings.AWS_REGION,
-        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
-        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
-    }
-    
-    aws_session_token = getattr(settings, 'AWS_SESSION_TOKEN', '')
-    if aws_session_token:
-        auth_kwargs["aws_session_token"] = aws_session_token
-    
-    return auth_kwargs
+# Removed the aws_credentials fixture to avoid conflicts with the definition in conftest.py.
 
 
 class TestBedrockEngine:
