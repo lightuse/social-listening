@@ -194,7 +194,7 @@ async def main():
     print("\n" + "="*50)
     print("API接続テスト実行中...")
     
-    #results['twitter'] = await run_api_test('Twitter', test_twitter_api, "Bearer Tokenまたはアクセストークンを確認してください", "https://developer.twitter.com/")
+    results['twitter'] = await run_api_test('Twitter', test_twitter_api, "Bearer Tokenまたはアクセストークンを確認してください", "https://developer.twitter.com/")
     results['youtube'] = await run_api_test('YouTube', test_youtube_api, "Google Cloud ConsoleでYouTube Data API v3が有効になっているか確認してください", "https://console.cloud.google.com/")
     results['reddit'] = await run_api_test('Reddit', test_reddit_api, "アプリケーションがScript typeで作成されているか確認してください", "https://www.reddit.com/prefs/apps")
 
