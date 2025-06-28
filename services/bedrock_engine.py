@@ -336,20 +336,32 @@ class BedrockSentimentEngine:
     def _parse_sentiment_response(self, response_text: str) -> Dict[str, Any]:
         """Parse AI sentiment analysis response"""
         try:
-            # Try to extract JSON from response
-            import re
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
-                # Validate required fields
-                if all(key in result for key in ["sentiment_label", "sentiment_score", "confidence"]):
-                    return result
+            # Attempt to parse the entire response as JSON
+            result = json.loads(response_text)
+            # Validate required fields
+            if all(key in result for key in ["sentiment_label", "sentiment_score", "confidence"]):
+                return result
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse response as JSON. Attempting substring extraction.")
+            # Attempt to extract JSON-like substrings and parse them
+            for potential_json in self._extract_json_substrings(response_text):
+                try:
+                    result = json.loads(potential_json)
+                    if all(key in result for key in ["sentiment_label", "sentiment_score", "confidence"]):
+                        return result
+                except json.JSONDecodeError:
+                    continue
         except Exception as e:
-            logger.error(f"Failed to parse sentiment response: {e}")
+            logger.error(f"Unexpected error during sentiment response parsing: {e}")
 
         # Fallback parsing
         return self._get_fallback_sentiment_analysis(response_text)
 
+    def _extract_json_substrings(self, text: str) -> List[str]:
+        """Extract potential JSON substrings from text"""
+        import re
+        # Match JSON objects in the text
+        return re.findall(r'\{.*?\}', text, re.DOTALL)
     def _parse_report_response(self, response_text: str) -> Dict[str, Any]:
         """Parse AI report generation response"""
         try:
