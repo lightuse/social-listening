@@ -74,6 +74,7 @@ markers = [
     "integration: marks tests as integration tests", 
     "aws: marks tests that require AWS credentials",
     "bedrock: marks tests that require AWS Bedrock access",
+    "requires_aws: marks tests that require actual AWS access (not mock)",
     "unit: marks tests as unit tests",
 ]
 filterwarnings = [

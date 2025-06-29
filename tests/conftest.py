@@ -6,11 +6,17 @@ import pytest
 import asyncio
 from pathlib import Path
 import sys
+import tempfile
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 # プロジェクトのパスを追加
 sys.path.append(str(Path(__file__).parent.parent))
 
 from core.config import settings
+from core.database import Base, get_db
+from models.database import Post, Keyword, SentimentAnalysis, Report, CollectionTask  # Import specific models
 
 
 @pytest.fixture(scope="session")
@@ -19,6 +25,66 @@ def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="session")
+def test_db_engine():
+    """テスト用データベースエンジンを作成"""
+    # Create a temporary database file for testing
+    db_fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(db_fd)
+    
+    # Create test database URL
+    test_db_url = f"sqlite:///{db_path}"
+    
+    # Create engine for test database
+    engine = create_engine(
+        test_db_url,
+        connect_args={"check_same_thread": False}
+    )
+    
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+    
+    yield engine
+    
+    # Cleanup
+    engine.dispose()
+    if os.path.exists(db_path):
+        os.unlink(db_path)
+
+
+@pytest.fixture
+def test_db_session(test_db_engine):
+    """テスト用データベースセッション"""
+    TestingSessionLocal = sessionmaker(
+        autocommit=False, 
+        autoflush=False, 
+        bind=test_db_engine
+    )
+    
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def override_get_db(test_db_session):
+    """データベース依存関係をテスト用にオーバーライド"""
+    from core.database import get_db
+    from main import app
+    
+    def _get_test_db():
+        try:
+            yield test_db_session
+        finally:
+            pass
+    
+    app.dependency_overrides[get_db] = _get_test_db
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
