@@ -629,13 +629,13 @@ curl "http://localhost:8002/api/v1/trending-topics?days=7" | \
 4. **Docker関連**:
    ```bash
    # コンテナの再起動
-   docker-compose restart
+   docker compose restart
    
    # ログの確認
-   docker-compose logs -f
+   docker compose logs -f
    
    # 完全な再ビルド
-   docker-compose down && docker-compose up --build
+docker compose down && docker compose up --build --no-cache
    ```
 
 ## ⚡ システムパフォーマンス最適化
