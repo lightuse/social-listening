@@ -35,13 +35,13 @@ jobs:
     - name: Run unit tests
       run: |
         echo "🧪 Running core unit tests..."
-        uv run pytest tests/ -v --tb=short -k "not (aws or bedrock)" --maxfail=5
+        uv run pytest tests/ -k "not (aws or bedrock)" --maxfail=5
       continue-on-error: false
     
     - name: Run integration tests (without AWS)
       run: |
         echo "🔗 Running integration tests (excluding AWS)..."
-        uv run pytest tests/ -k "not (aws or bedrock)" --verbose --tb=short
+        uv run pytest tests/ -k "not (aws or bedrock)" --cov-append
       continue-on-error: false
     
     # AWS関連テストは環境変数が設定されている場合のみ実行
@@ -86,13 +86,27 @@ jobs:
         uv run flake8 . || echo "flake8 check failed but continuing..."
       continue-on-error: true
     
+    - name: Check coverage file
+      run: |
+        if [ -f "coverage.xml" ]; then
+          echo "✅ Coverage file found"
+          head -n 5 coverage.xml
+        else
+          echo "❌ Coverage file not found"
+          ls -la
+        fi
+    
     - name: Upload coverage reports
       if: matrix.python-version == '3.12'
       uses: codecov/codecov-action@v4
       with:
-        file: ./coverage.xml
         fail_ci_if_error: false
+        verbose: true
         token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+      continue-on-error: true
 
   security:
     runs-on: ubuntu-latest
@@ -104,7 +118,7 @@ jobs:
     
     - name: Security audit
       run: |
-        uv sync
+        uv sync --extra security
         uv run pip-audit
       continue-on-error: true
 
