@@ -166,9 +166,6 @@ async def get_comprehensive_report(
                 ]
             }
             
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
         # 日付範囲の計算
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
@@ -200,6 +197,9 @@ async def get_comprehensive_report(
             "trending_topics": [],
             "insights": []
         }
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
         
         # サマリー統計
         try:
@@ -287,7 +287,10 @@ async def get_comprehensive_report(
             
             params = []
             if platform:
-                summary_query += " WHERE platform = ?"
+                if table_structure == "new":
+                    summary_query += " WHERE p.platform = ?"
+                else:
+                    summary_query += " WHERE platform = ?"
                 params.append(platform)
             
             logger.info(f"Executing summary query: {summary_query}")

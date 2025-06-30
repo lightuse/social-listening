@@ -91,7 +91,7 @@ def main():
         print("\nNext steps:")
         print("1. Configure your .env file with API keys")
         print("2. Run: python main.py")
-        print("3. Visit: http://localhost:8001")
+        print("3. Visit: http://localhost:8002")
         
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")

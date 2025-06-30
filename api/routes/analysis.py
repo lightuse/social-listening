@@ -5,7 +5,6 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 import logging
 import json
-import json
 from collections import Counter, defaultdict
 import re
 
@@ -114,9 +113,27 @@ async def start_analysis(
 ):
     """Start sentiment analysis for keywords"""
     try:
+        logger.info(f"Starting analysis for keywords: {request.keywords}, platforms: {request.platforms}")
+        
+        # Validate platforms
+        available_platforms = data_collector.get_available_platforms()
+        requested_platforms = request.platforms or available_platforms
+        valid_platforms = [p for p in requested_platforms if p in available_platforms]
+        
+        if not valid_platforms:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No valid platforms available. Requested: {requested_platforms}, Available: {available_platforms}"
+            )
+        
+        # Warn about unavailable platforms
+        unavailable_platforms = [p for p in requested_platforms if p not in available_platforms]
+        if unavailable_platforms:
+            logger.warning(f"Unavailable platforms skipped: {unavailable_platforms}")
+        
         # Create collection task
         task = CollectionTask(
-            platform=",".join(request.platforms),
+            platform=",".join(valid_platforms),
             keywords=request.keywords,
             status="pending"
         )
@@ -124,24 +141,35 @@ async def start_analysis(
         db.commit()
         db.refresh(task)
         
+        # Calculate estimated time based on platforms
+        estimated_minutes = len(valid_platforms) * len(request.keywords) * 2  # 2 minutes per platform per keyword
+        estimated_time = f"{min(estimated_minutes, 15)} minutes"
+        
+        logger.info(f"Created analysis task {task.id} for platforms: {valid_platforms}")
+        
         # Start background task
         background_tasks.add_task(
             run_analysis_task, 
             task.id, 
             request.keywords, 
-            request.platforms,
+            valid_platforms,
             request.max_posts_per_platform
         )
         
         return {
             "message": "Analysis started",
             "task_id": task.id,
-            "estimated_time": "5-15 minutes"
+            "platforms": valid_platforms,
+            "estimated_time": estimated_time,
+            "keywords_count": len(request.keywords)
         }
     
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error starting analysis: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error starting analysis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/analysis/status/{task_id}")
@@ -439,17 +467,49 @@ async def run_analysis_task(
     try:
         # Update task status
         task = db.query(CollectionTask).filter(CollectionTask.id == task_id).first()
+        if not task:
+            logger.error(f"Task {task_id} not found")
+            return
+            
         task.status = "running"
         task.started_at = datetime.now(timezone.utc)
         db.commit()
         
+        logger.info(f"Starting analysis task {task_id} for platforms: {platforms}, keywords: {keywords}")
+        
         # Initialize services
         await sentiment_engine.initialize()
         
-        # Collect posts
+        # Check which platforms are actually available
+        available_platforms = data_collector.get_available_platforms()
+        valid_platforms = [p for p in platforms if p in available_platforms]
+        
+        if not valid_platforms:
+            raise Exception(f"No valid platforms available from requested: {platforms}")
+        
+        # Log platform availability
+        for platform in platforms:
+            if platform in available_platforms:
+                logger.info(f"Platform {platform}: API credentials available")
+            else:
+                logger.warning(f"Platform {platform}: API credentials not available, skipping")
+        
+        # Collect posts with platform-specific error handling
+        logger.info(f"Collecting posts from {len(valid_platforms)} platforms: {valid_platforms}")
         posts = await data_collector.collect_all_platforms(
-            keywords, platforms, max_posts_per_platform
+            keywords, valid_platforms, max_posts_per_platform
         )
+        
+        logger.info(f"Collected {len(posts)} total posts from all platforms")
+        
+        # Platform-specific collection summary
+        platform_counts = {}
+        for post in posts:
+            platform = post.get('platform', 'unknown')
+            platform_counts[platform] = platform_counts.get(platform, 0) + 1
+        
+        for platform, count in platform_counts.items():
+            logger.info(f"Platform {platform}: {count} posts collected")
         
         # Save posts to database
         posts_saved = 0
@@ -457,6 +517,7 @@ async def run_analysis_task(
             # Check if post already exists
             existing = db.query(Post).filter(Post.external_id == post_data['external_id']).first()
             if existing:
+                logger.debug(f"Post {post_data['external_id']} already exists, skipping")
                 continue
             
             # Save post
@@ -473,7 +534,7 @@ async def run_analysis_task(
             for keyword in keywords:
                 keyword_obj = db.query(Keyword).filter(Keyword.term == keyword).first()
                 if not keyword_obj:
-                    keyword_obj = Keyword(term=keyword, platforms=platforms)
+                    keyword_obj = Keyword(term=keyword, platforms=valid_platforms)
                     db.add(keyword_obj)
                     db.flush()
                 
@@ -499,16 +560,18 @@ async def run_analysis_task(
         task.status = "completed"
         task.completed_at = datetime.now(timezone.utc)
         task.posts_collected = posts_saved
+        task.platforms_used = ",".join(valid_platforms)
         db.commit()
         
-        logger.info(f"Analysis task {task_id} completed. Processed {posts_saved} posts.")
+        logger.info(f"Analysis task {task_id} completed successfully. Processed {posts_saved} new posts from platforms: {valid_platforms}")
         
     except Exception as e:
-        logger.error(f"Analysis task {task_id} failed: {e}")
-        task.status = "failed"
-        task.errors = [str(e)]
-        task.completed_at = datetime.now(timezone.utc)
-        db.commit()
+        logger.error(f"Analysis task {task_id} failed: {e}", exc_info=True)
+        if 'task' in locals():
+            task.status = "failed"
+            task.errors = [str(e)]
+            task.completed_at = datetime.now(timezone.utc)
+            db.commit()
     
     finally:
         db.close()
@@ -609,7 +672,12 @@ def _calculate_timeline_data(analyses):
     
     for analysis in analyses:
         if analysis.post and analysis.post.posted_at:
-            date_key = analysis.post.posted_at.strftime("%Y-%m-%d")
+            # タイムゾーン対応
+            post_time = analysis.post.posted_at
+            if post_time.tzinfo is None:
+                post_time = post_time.replace(tzinfo=timezone.utc)
+            
+            date_key = post_time.strftime("%Y-%m-%d")
             sentiment = analysis.sentiment_label or "neutral"
             timeline[date_key][sentiment] += 1
     
@@ -1064,6 +1132,8 @@ async def get_trending_topic_details(
 async def _analyze_trending_topics(posts: List[Post], db: Session) -> Dict[str, Any]:
     """投稿からトレンドトピックを分析"""
     
+    logger.info(f"Analyzing trending topics from {len(posts)} posts")
+    
     # 1. キーワード抽出と頻度カウント
     all_keywords = []
     platform_breakdown = defaultdict(lambda: defaultdict(int))
@@ -1075,13 +1145,17 @@ async def _analyze_trending_topics(posts: List[Post], db: Session) -> Dict[str, 
         # シンプルなキーワード抽出（日本語対応）
         keywords = _extract_keywords_from_content(post.content)
         all_keywords.extend(keywords)
+        logger.debug(f"Extracted keywords from post {post.id}: {keywords}")
         
         # プラットフォーム別の分析
         for keyword in keywords:
             platform_breakdown[keyword][post.platform or "unknown"] += 1
     
+    logger.info(f"Total keywords extracted: {len(all_keywords)}")
+    
     # 2. キーワード頻度分析
     keyword_counts = Counter(all_keywords)
+    logger.info(f"Top 10 keywords: {keyword_counts.most_common(10)}")
     
     # 3. 感情分析結果との関連付け
     sentiment_by_keyword = await _get_sentiment_by_keywords(posts, db)
@@ -1089,10 +1163,14 @@ async def _analyze_trending_topics(posts: List[Post], db: Session) -> Dict[str, 
     # 4. トピックランキング生成
     topics = []
     for keyword, count in keyword_counts.most_common(50):  # 上位50個を分析
-        if count < 3:  # 最小出現回数フィルター
+        if count < 1:  # 最小出現回数を1に変更（より多くのトピックを検出）
             continue
             
         sentiment_data = sentiment_by_keyword.get(keyword, {})
+        
+        # 感情データが空の場合はデフォルト値を設定
+        if not sentiment_data:
+            sentiment_data = {"positive": 0, "negative": 0, "neutral": count, "average_score": 0}
         
         topic_data = {
             "topic": keyword,
@@ -1101,16 +1179,19 @@ async def _analyze_trending_topics(posts: List[Post], db: Session) -> Dict[str, 
             "sentiment": {
                 "positive": sentiment_data.get("positive", 0),
                 "negative": sentiment_data.get("negative", 0),
-                "neutral": sentiment_data.get("neutral", 0),
+                "neutral": sentiment_data.get("neutral", count),  # デフォルトをcountに設定
                 "average_score": sentiment_data.get("average_score", 0)
             },
             "trend_score": _calculate_trend_score(count, sentiment_data),
             "recent_activity": _calculate_recent_activity(keyword, posts)
         }
         topics.append(topic_data)
+        logger.debug(f"Added topic: {keyword} with count {count} and trend score {topic_data['trend_score']}")
     
     # トレンドスコアでソート
     topics.sort(key=lambda x: x["trend_score"], reverse=True)
+    
+    logger.info(f"Generated {len(topics)} trending topics")
     
     return {"topics": topics}
 
@@ -1248,10 +1329,23 @@ def _calculate_recent_activity(keyword: str, posts: List[Post]) -> Dict[str, Any
     for post in posts:
         if not post.content or keyword not in post.content:
             continue
-            
-        hours_ago = (now - post.posted_at).total_seconds() / 3600
-        if hours_ago <= 24:  # 過去24時間
-            recent_posts.append(post)
+        
+        try:
+            # タイムゾーン対応
+            post_time = post.posted_at
+            if post_time is None:
+                continue
+                
+            if post_time.tzinfo is None:
+                post_time = post_time.replace(tzinfo=timezone.utc)
+                
+            hours_ago = (now - post_time).total_seconds() / 3600
+            if hours_ago <= 24:  # 過去24時間
+                recent_posts.append(post)
+        except Exception as e:
+            # エラーが発生した場合はスキップ
+            logger.warning(f"Error calculating recent activity for post {post.id}: {e}")
+            continue
     
     return {
         "last_24h_mentions": len(recent_posts),
@@ -1266,8 +1360,13 @@ def _calculate_topic_timeline(topic: str, posts: List[Post]) -> Dict[str, Any]:
     for post in posts:
         if not post.content or topic not in post.content:
             continue
+        
+        # タイムゾーン対応
+        post_time = post.posted_at
+        if post_time.tzinfo is None:
+            post_time = post_time.replace(tzinfo=timezone.utc)
             
-        date_key = post.posted_at.strftime("%Y-%m-%d")
+        date_key = post_time.strftime("%Y-%m-%d")
         daily_counts[date_key] += 1
     
     # ピーク日を特定
@@ -1341,7 +1440,7 @@ def _get_sample_posts(posts: List[Post], limit: int = 5) -> List[Dict[str, Any]]
         {
             "content": post.content[:200] + "..." if len(post.content or "") > 200 else post.content,
             "platform": post.platform,
-            "posted_at": post.posted_at.isoformat(),
+            "posted_at": (post.posted_at.replace(tzinfo=timezone.utc) if post.posted_at.tzinfo is None else post.posted_at).isoformat(),
             "url": post.url
         }
         for post in sample_posts
@@ -1419,3 +1518,72 @@ def _generate_topic_insights(topic: str, posts: List[Post], sentiment_analysis: 
         insights.append(f"複数のプラットフォーム（{', '.join(platforms)}）で話題になっています。")
     
     return insights
+
+
+@router.get("/sentiment/platform-breakdown")
+async def get_platform_sentiment_breakdown(
+    keywords: Optional[str] = None,
+    days: int = 7,
+    db: Session = Depends(get_db)
+):
+    """Get sentiment breakdown by platform"""
+    try:
+        logger.info(f"Getting platform sentiment breakdown for keywords: {keywords}, days: {days}")
+        
+        # Calculate date range
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=days)
+        
+        # Build query - start with SentimentAnalysis table
+        query = db.query(SentimentAnalysis, Post.platform).join(Post).filter(
+            Post.collected_at >= start_date,
+            Post.collected_at <= end_date
+        )
+        
+        # Filter by keywords if provided
+        if keywords:
+            keyword_list = [k.strip() for k in keywords.split(",")]
+            keyword_filters = []
+            for keyword in keyword_list:
+                keyword_filters.append(Post.content.contains(keyword))
+                keyword_filters.append(Post.hashtags.contains(keyword))
+            
+            from sqlalchemy import or_
+            query = query.filter(or_(*keyword_filters))
+        
+        results = query.all()
+        
+        logger.info(f"Found {len(results)} analyses for platform breakdown")
+        
+        # Group by platform and sentiment
+        platform_stats = defaultdict(lambda: {"positive": 0, "negative": 0, "neutral": 0})
+        
+        for analysis, platform in results:
+            if analysis.sentiment_label in platform_stats[platform]:
+                platform_stats[platform][analysis.sentiment_label] += 1
+        
+        # Convert to the format expected by the frontend
+        platform_data = {}
+        for platform, sentiments in platform_stats.items():
+            platform_data[platform] = {
+                "positive": sentiments["positive"],
+                "negative": sentiments["negative"], 
+                "neutral": sentiments["neutral"],
+                "total": sum(sentiments.values())
+            }
+        
+        return {
+            "platforms": platform_data,
+            "period": f"{days} days",
+            "date_range": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat()
+            },
+            "filters": {
+                "keywords": keywords
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting platform sentiment breakdown: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting platform breakdown: {str(e)}")
