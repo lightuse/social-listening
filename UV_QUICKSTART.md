@@ -31,9 +31,6 @@ cp .env.example .env
 ```bash
 # 開発サーバーを起動
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# または Makefileを使用
-make dev
 ```
 
 ### 4. テストの実行

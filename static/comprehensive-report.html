@@ -385,8 +385,6 @@
             
             <div class="control-group">
                 <button class="btn-primary" onclick="generateReport()">レポート生成</button>
-                <button class="btn-export" onclick="exportReport('json')">JSON</button>
-                <button class="btn-export" onclick="exportReport('csv')">CSV</button>
             </div>
         </div>
 
@@ -531,22 +529,25 @@
         }
 
         function displaySentimentAnalysis(sentimentData, sentimentDist) {
+            // overall_sentiment データを使用
+            const overallSentiment = sentimentData.overall_sentiment || {};
+            
             const sentimentGrid = document.getElementById('sentimentGrid');
             sentimentGrid.innerHTML = `
                 <div class="sentiment-card sentiment-positive">
                     <h3>ポジティブ</h3>
-                    <div class="number">${sentimentData.positive?.count || 0}</div>
-                    <div>信頼度: ${sentimentData.positive?.average_confidence || 0}%</div>
+                    <div class="number">${overallSentiment.positive?.count || 0}</div>
+                    <div>信頼度: ${((overallSentiment.positive?.average_confidence || 0) * 100).toFixed(1)}%</div>
                 </div>
                 <div class="sentiment-card sentiment-negative">
                     <h3>ネガティブ</h3>
-                    <div class="number">${sentimentData.negative?.count || 0}</div>
-                    <div>信頼度: ${sentimentData.negative?.average_confidence || 0}%</div>
+                    <div class="number">${overallSentiment.negative?.count || 0}</div>
+                    <div>信頼度: ${((overallSentiment.negative?.average_confidence || 0) * 100).toFixed(1)}%</div>
                 </div>
                 <div class="sentiment-card sentiment-neutral">
                     <h3>ニュートラル</h3>
-                    <div class="number">${sentimentData.neutral?.count || 0}</div>
-                    <div>信頼度: ${sentimentData.neutral?.average_confidence || 0}%</div>
+                    <div class="number">${overallSentiment.neutral?.count || 0}</div>
+                    <div>信頼度: ${((overallSentiment.neutral?.average_confidence || 0) * 100).toFixed(1)}%</div>
                 </div>
             `;
 
@@ -563,9 +564,9 @@
                     labels: ['ポジティブ', 'ネガティブ', 'ニュートラル'],
                     datasets: [{
                         data: [
-                            sentimentDist.positive,
-                            sentimentDist.negative,
-                            sentimentDist.neutral
+                            overallSentiment.positive?.count || 0,
+                            overallSentiment.negative?.count || 0,
+                            overallSentiment.neutral?.count || 0
                         ],
                         backgroundColor: [
                             'rgba(56, 239, 125, 0.8)',
@@ -586,6 +587,17 @@
                                 padding: 20,
                                 font: {
                                     size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value}件 (${percentage}%)`;
                                 }
                             }
                         }
@@ -633,9 +645,17 @@
                 console.log(`Processing topic ${index}:`, topic);
                 
                 // 各フィールドを安全に抽出
-                const topicName = String(topic.topic || topic.keywords || 'Unknown Topic');
-                const frequency = parseInt(topic.frequency) || 0;
-                const sentimentBreakdown = topic.sentiment_breakdown || {};
+                let topicName = 'Unknown Topic';
+                if (topic.topic && String(topic.topic).trim()) {
+                    topicName = String(topic.topic).trim();
+                } else if (topic.keywords && String(topic.keywords).trim()) {
+                    topicName = String(topic.keywords).trim();
+                } else if (topic.name && String(topic.name).trim()) {
+                    topicName = String(topic.name).trim();
+                }
+                
+                const frequency = parseInt(topic.frequency) || parseInt(topic.mention_count) || 0;
+                const sentimentBreakdown = topic.sentiment_breakdown || topic.sentiment || {};
                 const positiveRate = parseFloat(sentimentBreakdown.positive) || 0;
                 const dominantSentiment = String(topic.dominant_sentiment || 'neutral');
                 

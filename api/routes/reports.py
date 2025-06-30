@@ -77,52 +77,41 @@ async def get_comprehensive_report(
         except Exception as e:
             logger.error(f"Error in platform analysis: {e}")
             platform_breakdown = {}
+        # トレンドトピック分析
+        trending_topics = _extract_trending_topics(posts)
         
-        
-        # トレンドトピック（ハッシュタグ分析）
-        trending_query = """
-        SELECT 
-            hashtags,
-            COUNT(*) as frequency,
-            AVG(CASE WHEN sa.sentiment_label = 'positive' THEN 1 ELSE 0 END) * 100 as positive_rate
-        FROM posts p
-        LEFT JOIN sentiment_analyses sa ON p.id = sa.post_id
-        WHERE p.collected_at >= ? AND p.collected_at <= ? AND p.hashtags IS NOT NULL
-        """
-        
-        params = [start_date.isoformat(), end_date.isoformat()]
-        if platform:
-            trending_query += " AND p.platform = ?"
-            params.append(platform)
-        trending_query += " GROUP BY p.hashtags ORDER BY frequency DESC LIMIT 10"
-        
-        cursor.execute(trending_query, params)
-        trending_data = cursor.fetchall()
-        
-        trending_topics = []
-        for row in trending_data:
-            if row[0]:  # ハッシュタグが存在する場合
-                trending_topics.append({
-                    "hashtags": row[0],
-                    "frequency": row[1],
-                    "positive_rate": round(row[2] or 0, 2)
-                })
-        
-        report["trending_topics"] = trending_topics
+        # レポート構造を作成
+        report = {
+            "generated_at": datetime.now().isoformat(),
+            "period": {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "days": days
+            },
+            "filters": {
+                "platform": platform,
+                "keyword": keyword
+            },
+            "summary": summary,
+            "sentiment_analysis": sentiment_analysis,
+            "platform_breakdown": platform_breakdown,
+            "trending_topics": trending_topics
+        }
         
         # インサイト生成
         insights = []
         
         # 感情分析インサイト
-        if report["summary"]["total_posts"] > 0:
-            sentiment_dist = report["summary"]["sentiment_distribution"]
-            dominant_sentiment = max(sentiment_dist, key=sentiment_dist.get)
-            insights.append({
-                "type": "sentiment",
-                "title": f"感情分析: {dominant_sentiment}が優勢",
-                "description": f"過去{days}日間で{dominant_sentiment}な投稿が{sentiment_dist[dominant_sentiment]}%を占めています。",
-                "priority": "high" if sentiment_dist[dominant_sentiment] > 60 else "medium"
-            })
+        if report["summary"].get("total_posts", 0) > 0:
+            sentiment_dist = report["summary"].get("sentiment_distribution", {})
+            if sentiment_dist:
+                dominant_sentiment = max(sentiment_dist, key=sentiment_dist.get)
+                insights.append({
+                    "type": "sentiment",
+                    "title": f"感情分析: {dominant_sentiment}が優勢",
+                    "description": f"過去{days}日間で{dominant_sentiment}な投稿が{sentiment_dist[dominant_sentiment]}%を占めています。",
+                    "priority": "high" if sentiment_dist[dominant_sentiment] > 60 else "medium"
+                })
         
         # エンゲージメントインサイト
         if platform_breakdown:
@@ -137,16 +126,20 @@ async def get_comprehensive_report(
         # トレンドインサイト
         if trending_topics:
             top_trend = trending_topics[0]
+            topic_name = top_trend.get('topic', 'Unknown Topic')
+            frequency = top_trend.get('frequency', 0)
+            sentiment_breakdown = top_trend.get('sentiment_breakdown', {})
+            positive_rate = sentiment_breakdown.get('positive', 0)
+            
             insights.append({
                 "type": "trend",
-                "title": f"トレンドハッシュタグ: {top_trend['hashtags']}",
-                "description": f"'{top_trend['hashtags']}'が{top_trend['frequency']}回言及され、{top_trend['positive_rate']}%がポジティブ",
+                "title": f"トレンドトピック: {topic_name}",
+                "description": f"'{topic_name}'が{frequency}回言及され、{positive_rate:.1f}%がポジティブ",
                 "priority": "high"
             })
         
         report["insights"] = insights
         
-        conn.close()
         return report
         
     except Exception as e:
@@ -342,34 +335,62 @@ def _analyze_engagement_details(posts: List[Post]) -> List[Dict[str, Any]]:
 
 def _analyze_keywords_details(posts: List[Post]) -> List[Dict[str, Any]]:
     """キーワード/ハッシュタグ詳細分析"""
-    hashtag_analysis = {}
+    import re
+    from collections import defaultdict
+    
+    hashtag_analysis = defaultdict(lambda: {
+        "frequency": 0,
+        "platforms": set(),
+        "sentiment_counts": {"positive": 0, "negative": 0, "neutral": 0},
+        "total_engagement": 0
+    })
     
     for post in posts:
-        if not post.hashtags:
-            continue
+        keywords_found = []
+        
+        # 投稿内容からキーワードを抽出
+        if post.content:
+            # ハッシュタグを抽出
+            hashtags = re.findall(r'#(\w+)', post.content)
+            keywords_found.extend(hashtags)
             
-        for hashtag in post.hashtags:
-            if hashtag not in hashtag_analysis:
-                hashtag_analysis[hashtag] = {
-                    "frequency": 0,
-                    "platforms": set(),
-                    "sentiment_counts": {"positive": 0, "negative": 0, "neutral": 0},
-                    "total_engagement": 0
-                }
+            # 日本語キーワード（2文字以上）
+            jp_keywords = re.findall(r'[あ-んア-ン一-龯]{2,}', post.content)
+            # よくある無意味な語を除外
+            stop_words = {'です', 'ます', 'した', 'ある', 'ない', 'これ', 'それ', 'あれ', 'どれ', 'こと', 'もの', 'よう', 'みたい'}
+            jp_keywords = [kw for kw in jp_keywords if kw not in stop_words and len(kw) >= 2]
+            keywords_found.extend(jp_keywords[:3])  # 上位3個まで
             
-            hashtag_analysis[hashtag]["frequency"] += 1
-            hashtag_analysis[hashtag]["platforms"].add(post.platform)
-            
-            # エンゲージメント
-            engagement = (post.likes or 0) + (post.shares or 0) + (post.comments or 0)
-            hashtag_analysis[hashtag]["total_engagement"] += engagement
-            
-            # 感情分析
-            if post.analyses:
-                latest_analysis = max(post.analyses, key=lambda x: x.analyzed_at)
-                sentiment = latest_analysis.sentiment_label
-                if sentiment in hashtag_analysis[hashtag]["sentiment_counts"]:
-                    hashtag_analysis[hashtag]["sentiment_counts"][sentiment] += 1
+            # 英語キーワード（3文字以上）
+            en_keywords = re.findall(r'\b[A-Za-z]{3,}\b', post.content)
+            en_stop_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'has', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'get', 'man', 'own', 'say', 'she', 'too', 'use'}
+            en_keywords = [kw.lower() for kw in en_keywords if kw.lower() not in en_stop_words and len(kw) >= 3]
+            keywords_found.extend(en_keywords[:2])  # 上位2個まで
+        
+        # 感情分析データから抽出されたトピックも使用
+        if post.analyses:
+            for analysis in post.analyses:
+                if hasattr(analysis, 'topics') and analysis.topics and isinstance(analysis.topics, list):
+                    keywords_found.extend(analysis.topics)
+        
+        # キーワード分析
+        for keyword in keywords_found:
+            if keyword and len(str(keyword).strip()) >= 2:  # 2文字以上のキーワードのみ
+                keyword = str(keyword).strip()
+                
+                hashtag_analysis[keyword]["frequency"] += 1
+                hashtag_analysis[keyword]["platforms"].add(post.platform)
+                
+                # エンゲージメント
+                engagement = (post.likes or 0) + (post.shares or 0) + (post.comments or 0)
+                hashtag_analysis[keyword]["total_engagement"] += engagement
+                
+                # 感情分析
+                if post.analyses:
+                    latest_analysis = max(post.analyses, key=lambda x: x.analyzed_at)
+                    sentiment = latest_analysis.sentiment_label or "neutral"
+                    if sentiment in hashtag_analysis[keyword]["sentiment_counts"]:
+                        hashtag_analysis[keyword]["sentiment_counts"][sentiment] += 1
     
     # 結果を整形
     result = []
@@ -522,34 +543,71 @@ def _analyze_platforms(posts: List[Post]) -> Dict[str, Any]:
 
 def _extract_trending_topics(posts: List[Post]) -> List[Dict[str, Any]]:
     """トレンドトピックを抽出"""
-    hashtag_counts = {}
-    keyword_sentiment = {}
+    import re
+    from collections import Counter, defaultdict
+    
+    topic_counts = Counter()
+    topic_sentiment = defaultdict(lambda: {"positive": 0, "negative": 0, "neutral": 0})
     
     for post in posts:
-        # ハッシュタグの処理
-        if post.hashtags:
-            for hashtag in post.hashtags:
-                if hashtag not in hashtag_counts:
-                    hashtag_counts[hashtag] = 0
-                    keyword_sentiment[hashtag] = {"positive": 0, "negative": 0, "neutral": 0}
+        topics_found = []
+        
+        # 1. 投稿内容からキーワードを抽出
+        if post.content:
+            # ハッシュタグを抽出
+            hashtags = re.findall(r'#(\w+)', post.content)
+            topics_found.extend(hashtags)
+            
+            # 日本語キーワード（2文字以上）
+            jp_keywords = re.findall(r'[あ-んア-ン一-龯]{2,}', post.content)
+            # よくある無意味な語を除外
+            stop_words = {'です', 'ます', 'した', 'ある', 'ない', 'これ', 'それ', 'あれ', 'どれ', 'こと', 'もの', 'よう', 'みたい'}
+            jp_keywords = [kw for kw in jp_keywords if kw not in stop_words and len(kw) >= 2]
+            topics_found.extend(jp_keywords[:3])  # 上位3個まで
+            
+            # 英語キーワード（3文字以上）
+            en_keywords = re.findall(r'\b[A-Za-z]{3,}\b', post.content)
+            en_stop_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'has', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'get', 'man', 'own', 'say', 'she', 'too', 'use'}
+            en_keywords = [kw.lower() for kw in en_keywords if kw.lower() not in en_stop_words and len(kw) >= 3]
+            topics_found.extend(en_keywords[:2])  # 上位2個まで
+        
+        # 3. 感情分析データから抽出されたトピックも使用
+        if post.analyses:
+            for analysis in post.analyses:
+                if analysis.topics and isinstance(analysis.topics, list):
+                    topics_found.extend(analysis.topics)
+        
+        # トピックカウントと感情分析
+        for topic in topics_found:
+            if topic and len(str(topic).strip()) >= 2:  # 2文字以上のトピックのみ
+                topic = str(topic).strip()
+                topic_counts[topic] += 1
                 
-                hashtag_counts[hashtag] += 1
-                
-                # 感情分析
+                # 感情分析結果を関連付け
                 if post.analyses:
                     latest_analysis = max(post.analyses, key=lambda x: x.analyzed_at)
-                    sentiment = latest_analysis.sentiment_label
-                    if sentiment in keyword_sentiment[hashtag]:
-                        keyword_sentiment[hashtag][sentiment] += 1
+                    sentiment = latest_analysis.sentiment_label or "neutral"
+                    if sentiment in topic_sentiment[topic]:
+                        topic_sentiment[topic][sentiment] += 1
+                else:
+                    topic_sentiment[topic]["neutral"] += 1
     
-    # 上位トピックを作成
+    # 上位トピックを作成（最小出現回数でフィルタリング）
     trending = []
-    for hashtag, count in sorted(hashtag_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
-        sentiment_data = keyword_sentiment[hashtag]
+    for topic, count in topic_counts.most_common(15):
+        if count < 2:  # 最低2回は出現する必要がある
+            continue
+            
+        sentiment_data = topic_sentiment[topic]
         total = sum(sentiment_data.values())
         
+        # 感情分析の結果が0の場合は neutral として扱う
+        if total == 0:
+            sentiment_data["neutral"] = 1
+            total = 1
+        
         trending.append({
-            "topic": hashtag,
+            "topic": topic,
             "frequency": count,
             "sentiment_breakdown": {
                 sentiment: round((cnt / total) * 100, 2) if total > 0 else 0
@@ -558,7 +616,7 @@ def _extract_trending_topics(posts: List[Post]) -> List[Dict[str, Any]]:
             "dominant_sentiment": max(sentiment_data.keys(), key=lambda k: sentiment_data[k]) if sentiment_data else "neutral"
         })
     
-    return trending
+    return trending[:10]  # 上位10個まで
 
 
 def _calculate_engagement_metrics(posts: List[Post]) -> Dict[str, Any]:

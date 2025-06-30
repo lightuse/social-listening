@@ -147,11 +147,122 @@
             color: white;
             border: none;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s;
+            font-weight: 500;
+            text-transform: none;
         }
         
         .control-group button:hover {
             background: #5a6fd8;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        /* 検索ボタン専用スタイル */
+        .btn-search {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            border: 2px solid transparent;
+            font-weight: 600;
+        }
+        
+        .btn-search:hover {
+            background: linear-gradient(45deg, #45a049, #3d8b40);
+            border-color: #2e7d32;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+        
+        /* 分析開始ボタン専用スタイル */
+        .btn-analyze {
+            background: linear-gradient(45deg, #FF6B35, #F7931E);
+            border: 2px solid transparent;
+            font-weight: 600;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-analyze:hover {
+            background: linear-gradient(45deg, #E55A2B, #E8851E);
+            border-color: #D84315;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+        }
+        
+        .btn-analyze:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .btn-analyze:hover:before {
+            left: 100%;
+        }
+        
+        /* ボタングループの配置改善 */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .button-group button {
+            min-width: 120px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        /* ボタン説明用スタイル */
+        .button-descriptions {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .button-help {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .help-item {
+            font-size: 13px;
+            color: #555;
+            line-height: 1.4;
+        }
+        
+        .help-item strong {
+            color: #333;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 768px) {
+            .button-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .button-group button {
+                min-width: auto;
+                width: 100%;
+            }
+            
+            .button-help {
+                gap: 8px;
+            }
         }
         
         .filter-status {
@@ -546,7 +657,7 @@
     <div class="container">
         <div class="header">
             <h1>🎯 Social Listening Dashboard</h1>
-            <p>AWS Bedrock駆動のリアルタイム感情分析</p>
+            <p>リアルタイム感情分析</p>
             <div class="header-nav">
                 <a href="/" class="nav-link active">📊 ダッシュボード</a>
                 <a href="/reports" class="nav-link">📈 包括的レポート</a>
@@ -571,11 +682,28 @@
                     <option value="negative">ネガティブ</option>
                     <option value="neutral">ニュートラル</option>
                 </select>
-                <button onclick="loadData()">🔍 検索</button>
-                <button onclick="startAnalysis()">🚀 分析開始</button>
             </div>
-            <div id="currentFilters" class="filter-status">
-                <small>🔍 現在のフィルター: 全データ</small>
+            
+            <div class="button-group">
+                <button class="btn-search" onclick="loadData()" title="現在のフィルター条件でデータを検索・表示します">
+                    <span>🔍</span>
+                    <span>データ検索</span>
+                </button>
+                <button class="btn-analyze" onclick="startAnalysis()" title="新しい分析タスクを開始します（時間がかかります）">
+                    <span>🚀</span>
+                    <span>新規分析開始</span>
+                </button>
+            </div>
+            
+            <div class="button-descriptions">
+                <div class="button-help">
+                    <div class="help-item">
+                        <strong>🔍 データ検索:</strong> 既存のデータベースから条件に合致する投稿を即座に検索・表示します（高速）
+                    </div>
+                    <div class="help-item">
+                        <strong>🚀 新規分析開始:</strong> 選択されたプラットフォームからリアルタイムで新しいデータを収集・分析します（数分かかります）
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -669,8 +797,47 @@
                         <li><strong>リアルタイム監視</strong>: 画面上部の統計情報で現在の感情分析状況を確認</li>
                         <li><strong>キーワード分析</strong>: 「キーワード」欄に調べたい単語を入力（例: AI, 人工知能）</li>
                         <li><strong>フィルタリング</strong>: プラットフォーム（Twitter/YouTube/Reddit）や感情で絞り込み</li>
+                        <li><strong>データ検索</strong>: 🔍ボタンで既存データから即座に検索（高速）</li>
+                        <li><strong>新規分析</strong>: 🚀ボタンで最新データを収集・分析（数分）</li>
                         <li><strong>トレンドトピック</strong>: 話題になっているキーワードをクリックして詳細を確認</li>
                     </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>🔍 ボタンの違いについて</h3>
+                    <div class="help-tip">
+                        <strong>💡 2つのボタンの使い分け:</strong>
+                        <ul>
+                            <li><strong>🔍 データ検索</strong>: 既存のデータベースから条件に合致する投稿を即座に検索・表示（数秒で完了）</li>
+                            <li><strong>🚀 新規分析開始</strong>: 選択されたプラットフォームから最新のデータをリアルタイムで収集し、AI分析を実行（2-5分程度）</li>
+                        </ul>
+                        <br>
+                        <strong>🎯 使い分けのコツ:</strong>
+                        <ul>
+                            <li>既存データの確認 → 🔍 データ検索</li>
+                            <li>最新の投稿を調べたい → 🚀 新規分析開始</li>
+                            <li>Twitter APIを節約したい → プラットフォームでTwitter以外を選択</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3>🛡️ プラットフォーム選択とAPI制限について</h3>
+                    <div class="help-warning">
+                        <strong>⚠️ 重要: Twitter API制限について</strong>
+                        <ul>
+                            <li><strong>Twitter API</strong>: 使用量制限があり、過度な使用でレート制限が発生します</li>
+                            <li><strong>YouTube API</strong>: 比較的制限が緩く、安定して利用可能</li>
+                            <li><strong>Reddit API</strong>: 認証情報があれば制限が緩い</li>
+                        </ul>
+                        <br>
+                        <strong>🎯 推奨使用方法:</strong>
+                        <ul>
+                            <li>Twitterのみの分析が必要でない場合は、プラットフォーム選択でYouTubeやRedditを選択</li>
+                            <li>新規分析は必要最小限に留め、まずはデータ検索で既存データを確認</li>
+                            <li>Twitter分析は重要なキーワードやブランド監視時のみ使用</li>
+                        </ul>
+                    </div>
                 </div>
 
                 <div class="help-section">
@@ -899,8 +1066,8 @@
             const sentimentData = await fetch('/api/v1/sentiment/summary?days=7').then(r => r.json());
             updateSentimentChart(sentimentData);
             
-            // For platform chart, we'll create mock data since the API doesn't provide this directly
-            updatePlatformChart();
+            // Update platform chart with real data
+            await updatePlatformChart();
         }
 
         function updateSentimentChart(data) {
@@ -936,47 +1103,116 @@
             });
         }
 
-        function updatePlatformChart() {
+        async function updatePlatformChart() {
             const ctx = document.getElementById('platformChart').getContext('2d');
             
             if (platformChart) {
                 platformChart.destroy();
             }
             
-            platformChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Twitter', 'YouTube', 'Reddit'],
-                    datasets: [
-                        {
-                            label: 'ポジティブ',
-                            data: [12, 8, 5],
-                            backgroundColor: '#27ae60'
+            try {
+                // Get keyword filter if available
+                const keywordInput = document.getElementById('keywordInput');
+                const keyword = keywordInput ? keywordInput.value.trim() : '';
+                let url = '/api/v1/sentiment/platform-breakdown?days=7';
+                if (keyword) {
+                    url += `&keywords=${keyword}`;
+                }
+                
+                console.log('Fetching platform breakdown from:', url);
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Platform breakdown data:', data);
+                
+                const platforms = Object.keys(data.platforms);
+                
+                // If no data available, show empty chart with message
+                if (platforms.length === 0) {
+                    platformChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: [],
+                            datasets: []
                         },
-                        {
-                            label: 'ネガティブ',
-                            data: [3, 5, 2],
-                            backgroundColor: '#e74c3c'
-                        },
-                        {
-                            label: 'ニュートラル',
-                            data: [7, 4, 6],
-                            backgroundColor: '#f39c12'
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'データがありません'
+                                }
+                            }
                         }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            stacked: true
-                        },
-                        y: {
-                            stacked: true
+                    });
+                    return;
+                }
+                
+                // Prepare data for chart
+                const positiveData = platforms.map(platform => data.platforms[platform].positive);
+                const negativeData = platforms.map(platform => data.platforms[platform].negative);
+                const neutralData = platforms.map(platform => data.platforms[platform].neutral);
+                
+                platformChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: platforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)),
+                        datasets: [
+                            {
+                                label: 'ポジティブ',
+                                data: positiveData,
+                                backgroundColor: '#27ae60'
+                            },
+                            {
+                                label: 'ネガティブ',
+                                data: negativeData,
+                                backgroundColor: '#e74c3c'
+                            },
+                            {
+                                label: 'ニュートラル',
+                                data: neutralData,
+                                backgroundColor: '#f39c12'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: {
+                                stacked: true
+                            },
+                            y: {
+                                stacked: true
+                            }
                         }
                     }
-                }
-            });
+                });
+                
+            } catch (error) {
+                console.error('Error updating platform chart:', error);
+                
+                // Show error message in chart
+                platformChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: []
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'データの読み込みに失敗しました'
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         async function startAnalysis() {
@@ -986,10 +1222,23 @@
                 return;
             }
             
-            const button = event.target;
-            const originalText = button.textContent;
-            button.textContent = '🔄 分析中...';
+            // プラットフォーム選択を取得
+            const platformSelect = document.getElementById('platformSelect').value;
+            let selectedPlatforms;
+            
+            if (platformSelect) {
+                // 特定のプラットフォームが選択されている場合
+                selectedPlatforms = [platformSelect];
+            } else {
+                // 全プラットフォームが選択されている場合
+                selectedPlatforms = ["twitter", "youtube", "reddit"];
+            }
+            
+            const button = event.target.closest('button');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<span>🔄</span><span>分析中...</span>';
             button.disabled = true;
+            button.style.opacity = '0.7';
             
             try {
                 const response = await fetch('/api/v1/analyze', {
@@ -999,7 +1248,7 @@
                     },
                     body: JSON.stringify({
                         keywords: keywords.split(',').map(k => k.trim()),
-                        platforms: ["twitter", "youtube", "reddit"],
+                        platforms: selectedPlatforms,
                         max_posts_per_platform: 50
                     })
                 });
@@ -1007,7 +1256,11 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    alert(`分析を開始しました。\nタスクID: ${result.task_id}\n推定時間: ${result.estimated_time}`);
+                    const platformText = selectedPlatforms.length === 1 ? 
+                        selectedPlatforms[0] : 
+                        `${selectedPlatforms.length}つのプラットフォーム`;
+                    
+                    alert(`分析を開始しました。\nタスクID: ${result.task_id}\n対象: ${platformText}\n推定時間: ${result.estimated_time}`);
                     
                     // Poll for results
                     setTimeout(() => loadData(), 5000);
@@ -1017,44 +1270,64 @@
             } catch (error) {
                 showError('分析の開始に失敗しました: ' + error.message);
             } finally {
-                button.textContent = originalText;
+                button.innerHTML = originalText;
                 button.disabled = false;
+                button.style.opacity = '1';
             }
         }
 
         async function loadTrendingTopics() {
             try {
                 const days = document.getElementById('trendingDays').value;
+                console.log('Loading trending topics for', days, 'days');
+                
                 const response = await fetch(`/api/v1/trending-topics?days=${days}&limit=10`);
                 const data = await response.json();
+                
+                console.log('Trending topics API response:', data);
                 
                 const container = document.getElementById('trendingTopicsContainer');
                 
                 if (data.trending_topics && data.trending_topics.length > 0) {
-                    container.innerHTML = data.trending_topics.map(topic => `
-                        <div class="topic-item" onclick="showTopicDetails('${topic.topic}')">
+                    console.log('Found', data.trending_topics.length, 'trending topics');
+                    container.innerHTML = data.trending_topics.map(topic => {
+                        // トピック名を安全に取得
+                        const topicName = topic.topic || topic.name || 'Unknown Topic';
+                        const mentionCount = topic.mention_count || topic.frequency || 0;
+                        const platforms = topic.platforms || {};
+                        const sentiment = topic.sentiment || {};
+                        const trendScore = topic.trend_score || 0;
+                        const recentActivity = topic.recent_activity || { activity_level: 'low' };
+                        
+                        console.log('Processing topic:', topicName, 'with', mentionCount, 'mentions');
+                        
+                        return `
+                        <div class="topic-item" onclick="showTopicDetails('${topicName}')">
                             <div class="topic-info">
-                                <div class="topic-name">${topic.topic}</div>
+                                <div class="topic-name">${topicName}</div>
                                 <div class="topic-stats">
-                                    <span>📊 ${topic.mention_count} 件の言及</span>
-                                    <span>📱 ${Object.keys(topic.platforms).join(', ')}</span>
+                                    <span>📊 ${mentionCount} 件の言及</span>
+                                    <span>📱 ${Object.keys(platforms).join(', ') || 'Multiple'}</span>
                                 </div>
                                 <div class="sentiment-summary">
-                                    ${topic.sentiment.positive > 0 ? `<span class="sentiment-chip positive">😊 ${topic.sentiment.positive}</span>` : ''}
-                                    ${topic.sentiment.negative > 0 ? `<span class="sentiment-chip negative">😞 ${topic.sentiment.negative}</span>` : ''}
-                                    ${topic.sentiment.neutral > 0 ? `<span class="sentiment-chip neutral">😐 ${topic.sentiment.neutral}</span>` : ''}
+                                    ${sentiment.positive > 0 ? `<span class="sentiment-chip positive">😊 ${sentiment.positive}</span>` : ''}
+                                    ${sentiment.negative > 0 ? `<span class="sentiment-chip negative">😞 ${sentiment.negative}</span>` : ''}
+                                    ${sentiment.neutral > 0 ? `<span class="sentiment-chip neutral">😐 ${sentiment.neutral}</span>` : ''}
                                 </div>
                             </div>
                             <div class="topic-metrics">
-                                <div class="trend-score">🔥 ${topic.trend_score}</div>
-                                <div class="activity-level activity-${topic.recent_activity.activity_level}">
-                                    ${topic.recent_activity.activity_level === 'high' ? '🔴 活発' : 
-                                      topic.recent_activity.activity_level === 'medium' ? '🟡 普通' : '🔵 低調'}
+                                <div class="trend-score">🔥 ${trendScore}</div>
+                                <div class="activity-level activity-${recentActivity.activity_level}">
+                                    ${recentActivity.activity_level === 'high' ? '🔴 活発' : 
+                                      recentActivity.activity_level === 'medium' ? '🟡 普通' : '🔵 低調'}
                                 </div>
                             </div>
                         </div>
-                    `).join('');
+                        `;
+                    }).join('');
+                    console.log('Trending topics HTML updated successfully');
                 } else {
+                    console.log('No trending topics found');
                     container.innerHTML = '<div class="loading">トレンドトピックが見つかりませんでした</div>';
                 }
             } catch (error) {
