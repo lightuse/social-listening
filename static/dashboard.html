@@ -511,6 +511,35 @@
             color: #383d41;
         }
         
+        .trending-summary {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            margin-top: 10px;
+            border: 1px solid #dee2e6;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        
+        .no-topics-message {
+            text-align: center;
+            padding: 30px 20px;
+            color: #666;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .no-topics-message p {
+            margin: 0 0 10px 0;
+            font-weight: bold;
+        }
+        
+        .no-topics-message small {
+            color: #999;
+        }
+        
         /* Help Modal Styles */
         .help-btn {
             position: fixed;
@@ -1215,22 +1244,219 @@
             }
         }
 
-        async function startAnalysis() {
+        // Trending Topics Loading Function
+        async function loadTrendingTopics() {
+            try {
+                const days = document.getElementById('trendingDays').value;
+                console.log('Loading trending topics for:', days, 'days');
+                
+                const response = await fetch(`/api/v1/trending-topics?days=${days}&limit=10`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Trending topics data:', data);
+                
+                const container = document.getElementById('trendingTopicsContainer');
+                
+                if (data.trending_topics && data.trending_topics.length > 0) {
+                    let html = '';
+                    
+                    data.trending_topics.forEach(topic => {
+                        const topicName = topic.topic || topic.name || 'Unknown Topic';
+                        const mentionCount = topic.mention_count || topic.frequency || 0;
+                        const trendScore = topic.trend_score || 0;
+                        
+                        // Activity level from API response
+                        const recentActivity = topic.recent_activity || {};
+                        const activityLevel = recentActivity.activity_level || 'low';
+                        const last24hMentions = recentActivity.last_24h_mentions || 0;
+                        
+                        // Activity level styling
+                        let activityClass = 'activity-low';
+                        let activityIcon = '🔵';
+                        if (activityLevel === 'high') {
+                            activityClass = 'activity-high';
+                            activityIcon = '🔴';
+                        } else if (activityLevel === 'medium') {
+                            activityClass = 'activity-medium';
+                            activityIcon = '🟡';
+                        }
+                        
+                        // Sentiment analysis
+                        const sentiment = topic.sentiment || {};
+                        const positive = sentiment.positive || 0;
+                        const negative = sentiment.negative || 0;
+                        const neutral = sentiment.neutral || 0;
+                        
+                        // Determine dominant sentiment
+                        let dominantSentiment = 'neutral';
+                        let sentimentIcon = '😐';
+                        if (positive > negative && positive > neutral) {
+                            dominantSentiment = 'positive';
+                            sentimentIcon = '😊';
+                        } else if (negative > positive && negative > neutral) {
+                            dominantSentiment = 'negative';
+                            sentimentIcon = '😞';
+                        }
+                        
+                        // Platform information
+                        const platforms = topic.platforms || {};
+                        const platformList = Object.keys(platforms).join(', ');
+                        
+                        html += `
+                            <div class="topic-item" onclick="showTopicDetails('${topicName}')">
+                                <div class="topic-info">
+                                    <div class="topic-name">${sentimentIcon} ${topicName}</div>
+                                    <div class="topic-stats">
+                                        <span>言及数: ${mentionCount}</span>
+                                        <span>プラットフォーム: ${platformList}</span>
+                                        <span>24時間: ${last24hMentions}件</span>
+                                    </div>
+                                </div>
+                                <div class="topic-metrics">
+                                    <div class="trend-score">${trendScore.toFixed(1)}</div>
+                                    <div class="activity-level ${activityClass}">${activityIcon} ${activityLevel}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<div class="loading">トレンドトピックが見つかりません</div>';
+                }
+            } catch (error) {
+                console.error('Error loading trending topics:', error);
+                document.getElementById('trendingTopicsContainer').innerHTML = 
+                    '<div class="error">トレンドトピックの読み込みに失敗しました: ' + error.message + '</div>';
+            }
+        }
+
+        // Show topic details function
+        function showTopicDetails(topicName) {
+            console.log('Showing details for topic:', topicName);
+            // TODO: Implement detailed topic view
+            alert(`${topicName} の詳細分析機能は準備中です。`);
+        }
+
+        // Task monitoring functions
+        let activeTaskId = null;
+        let taskMonitoringInterval = null;
+
+        async function monitorTaskProgress(taskId) {
+            if (taskMonitoringInterval) {
+                clearInterval(taskMonitoringInterval);
+            }
+            
+            activeTaskId = taskId;
+            
+            taskMonitoringInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/v1/analysis/status/${taskId}`);
+                    const taskStatus = await response.json();
+                    
+                    console.log('Task status:', taskStatus);
+                    
+                    if (taskStatus.status === 'completed') {
+                        clearInterval(taskMonitoringInterval);
+                        showTaskCompletion(taskStatus);
+                        loadData(); // Refresh dashboard
+                    } else if (taskStatus.status === 'failed') {
+                        clearInterval(taskMonitoringInterval);
+                        showTaskFailure(taskStatus);
+                    } else if (taskStatus.status === 'running') {
+                        showTaskProgress(taskStatus);
+                    }
+                } catch (error) {
+                    console.error('Error monitoring task:', error);
+                }
+            }, 10000); // Check every 10 seconds
+        }
+
+        function showTaskCompletion(taskStatus) {
+            const postsCollected = taskStatus.posts_collected || 0;
+            const platformsUsed = taskStatus.platforms_used ? taskStatus.platforms_used.split(',') : [];
+            
+            let message = `🎉 分析が完了しました！\n\n`;
+            message += `📊 収集された投稿数: ${postsCollected}件\n`;
+            message += `✅ 使用プラットフォーム: ${platformsUsed.join(', ')}\n`;
+            
+            if (taskStatus.errors && taskStatus.errors.length > 0) {
+                message += `\n⚠️ 一部エラーが発生しましたが、可能な範囲でデータを収集しました:\n`;
+                taskStatus.errors.slice(0, 3).forEach((error, index) => {
+                    if (error.includes('rate limit')) {
+                        message += `• レート制限により一部データの取得をスキップ\n`;
+                    } else {
+                        message += `• ${error.substring(0, 50)}...\n`;
+                    }
+                });
+            }
+            
+            message += `\n✨ ダッシュボードが更新されました！`;
+            
+            showSuccess('✅ 分析完了');
+            
+            // Optional: Show detailed completion dialog
+            if (confirm(message + '\n\n詳細結果を確認しますか？')) {
+                // Could redirect to detailed results page or show modal
+                loadData();
+            }
+        }
+
+        function showTaskFailure(taskStatus) {
+            let message = `❌ 分析タスクが失敗しました\n\n`;
+            
+            if (taskStatus.errors && taskStatus.errors.length > 0) {
+                message += `エラー詳細:\n`;
+                taskStatus.errors.forEach(error => {
+                    if (error.includes('rate limit')) {
+                        message += `• レート制限: しばらく時間をおいて再試行してください\n`;
+                    } else if (error.includes('unauthorized') || error.includes('forbidden')) {
+                        message += `• 認証エラー: API設定を確認してください\n`;
+                    } else {
+                        message += `• ${error}\n`;
+                    }
+                });
+            }
+            
+            message += `\n💡 対処法:\n`;
+            message += `• 別のプラットフォームを選択\n`;
+            message += `• キーワード数を減らす\n`;
+            message += `• 時間をおいて再試行`;
+            
+            showError(message);
+        }
+
+        function showTaskProgress(taskStatus) {
+            const startTime = new Date(taskStatus.started_at);
+            const elapsed = Math.floor((new Date() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            
+            showSuccess(`⏳ 分析実行中... (${minutes}:${seconds.toString().padStart(2, '0')})`);
+        }
+
+        // Enhanced startAnalysis function with task monitoring
+        async function startAnalysisWithMonitoring() {
             const keywords = document.getElementById('keywordInput').value;
             if (!keywords) {
                 alert('キーワードを入力してください');
                 return;
             }
             
-            // プラットフォーム選択を取得
+            // Clear any existing monitoring
+            if (taskMonitoringInterval) {
+                clearInterval(taskMonitoringInterval);
+            }
+            
             const platformSelect = document.getElementById('platformSelect').value;
             let selectedPlatforms;
             
             if (platformSelect) {
-                // 特定のプラットフォームが選択されている場合
                 selectedPlatforms = [platformSelect];
             } else {
-                // 全プラットフォームが選択されている場合
                 selectedPlatforms = ["twitter", "youtube", "reddit"];
             }
             
@@ -1241,6 +1467,8 @@
             button.style.opacity = '0.7';
             
             try {
+                showSuccess('分析を開始しています...');
+                
                 const response = await fetch('/api/v1/analyze', {
                     method: 'POST',
                     headers: {
@@ -1260,15 +1488,21 @@
                         selectedPlatforms[0] : 
                         `${selectedPlatforms.length}つのプラットフォーム`;
                     
-                    alert(`分析を開始しました。\nタスクID: ${result.task_id}\n対象: ${platformText}\n推定時間: ${result.estimated_time}`);
+                    // Start monitoring the task
+                    monitorTaskProgress(result.task_id);
                     
-                    // Poll for results
-                    setTimeout(() => loadData(), 5000);
+                    showSuccess(`✅ 分析タスクを開始しました (ID: ${result.task_id})`);
+                    
+                    // Show brief success message
+                    alert(`🚀 分析を開始しました！\n\nタスクID: ${result.task_id}\n対象: ${platformText}\n推定時間: ${result.estimated_time}\n\n進行状況は画面上部に表示されます。`);
+                    
                 } else {
-                    throw new Error(result.detail || 'Unknown error');
+                    // Handle specific error types
+                    handleAnalysisError(result);
                 }
             } catch (error) {
-                showError('分析の開始に失敗しました: ' + error.message);
+                console.error('Analysis error:', error);
+                handleNetworkError(error);
             } finally {
                 button.innerHTML = originalText;
                 button.disabled = false;
@@ -1276,85 +1510,29 @@
             }
         }
 
-        async function loadTrendingTopics() {
-            try {
-                const days = document.getElementById('trendingDays').value;
-                console.log('Loading trending topics for', days, 'days');
-                
-                const response = await fetch(`/api/v1/trending-topics?days=${days}&limit=10`);
-                const data = await response.json();
-                
-                console.log('Trending topics API response:', data);
-                
-                const container = document.getElementById('trendingTopicsContainer');
-                
-                if (data.trending_topics && data.trending_topics.length > 0) {
-                    console.log('Found', data.trending_topics.length, 'trending topics');
-                    container.innerHTML = data.trending_topics.map(topic => {
-                        // トピック名を安全に取得
-                        const topicName = topic.topic || topic.name || 'Unknown Topic';
-                        const mentionCount = topic.mention_count || topic.frequency || 0;
-                        const platforms = topic.platforms || {};
-                        const sentiment = topic.sentiment || {};
-                        const trendScore = topic.trend_score || 0;
-                        const recentActivity = topic.recent_activity || { activity_level: 'low' };
-                        
-                        console.log('Processing topic:', topicName, 'with', mentionCount, 'mentions');
-                        
-                        return `
-                        <div class="topic-item" onclick="showTopicDetails('${topicName}')">
-                            <div class="topic-info">
-                                <div class="topic-name">${topicName}</div>
-                                <div class="topic-stats">
-                                    <span>📊 ${mentionCount} 件の言及</span>
-                                    <span>📱 ${Object.keys(platforms).join(', ') || 'Multiple'}</span>
-                                </div>
-                                <div class="sentiment-summary">
-                                    ${sentiment.positive > 0 ? `<span class="sentiment-chip positive">😊 ${sentiment.positive}</span>` : ''}
-                                    ${sentiment.negative > 0 ? `<span class="sentiment-chip negative">😞 ${sentiment.negative}</span>` : ''}
-                                    ${sentiment.neutral > 0 ? `<span class="sentiment-chip neutral">😐 ${sentiment.neutral}</span>` : ''}
-                                </div>
-                            </div>
-                            <div class="topic-metrics">
-                                <div class="trend-score">🔥 ${trendScore}</div>
-                                <div class="activity-level activity-${recentActivity.activity_level}">
-                                    ${recentActivity.activity_level === 'high' ? '🔴 活発' : 
-                                      recentActivity.activity_level === 'medium' ? '🟡 普通' : '🔵 低調'}
-                                </div>
-                            </div>
-                        </div>
-                        `;
-                    }).join('');
-                    console.log('Trending topics HTML updated successfully');
-                } else {
-                    console.log('No trending topics found');
-                    container.innerHTML = '<div class="loading">トレンドトピックが見つかりませんでした</div>';
-                }
-            } catch (error) {
-                console.error('Error loading trending topics:', error);
-                document.getElementById('trendingTopicsContainer').innerHTML = 
-                    '<div class="error">トレンドトピックの読み込みに失敗しました</div>';
+        function handleAnalysisError(result) {
+            const errorMessage = result.detail || 'Unknown error';
+            
+            if (errorMessage.includes('rate limit') || errorMessage.includes('Rate limit')) {
+                showError(`⏳ レート制限エラー\n\n一部のプラットフォームで制限に達しました。\n\n💡 推奨対処法:\n• 30分〜1時間後に再試行\n• 他のプラットフォーム(YouTube/Reddit)を選択\n• キーワード数を3個以下に減らす`);
+            } else if (errorMessage.includes('No valid platforms')) {
+                showError(`❌ プラットフォームエラー\n\n利用可能なプラットフォームがありません。\n\n💡 解決方法:\n• 管理者にAPI設定を確認依頼\n• システム状態をヘルスチェックで確認\n• 別の時間に再試行`);
+            } else if (errorMessage.includes('unauthorized') || errorMessage.includes('forbidden')) {
+                showError(`🔐 認証エラー\n\nAPI認証に問題があります。\n\n💡 解決方法:\n• 管理者にAPI設定を確認依頼\n• システム再起動が必要な可能性\n• ヘルスチェックでサービス状態を確認`);
+            } else {
+                showError(`❌ 分析開始エラー\n\n${errorMessage}\n\n💡 一般的な対処法:\n• ページを再読み込み\n• キーワードを変更\n• 時間をおいて再試行`);
             }
         }
 
-        async function showTopicDetails(topic) {
-            try {
-                const response = await fetch(`/api/v1/trending-topics/details/${encodeURIComponent(topic)}`);
-                const data = await response.json();
-                
-                if (response.ok) {
-                    // Simple alert for now - can be enhanced with modal
-                    const insights = data.insights.join('\n');
-                    alert(`📊 トピック詳細: ${topic}\n\n${insights}`);
-                } else {
-                    throw new Error(data.detail || 'Unknown error');
-                }
-            } catch (error) {
-                console.error('Error loading topic details:', error);
-                alert('トピック詳細の読み込みに失敗しました: ' + error.message);
+        function handleNetworkError(error) {
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                showError(`🌐 ネットワークエラー\n\nサーバーに接続できません。\n\n💡 確認事項:\n• インターネット接続\n• サーバー稼働状況\n• ファイアウォール設定\n\n数分後に再試行してください。`);
+            } else {
+                showError(`❌ 予期しないエラー\n\n${error.message}\n\n💡 対処法:\n• ページを完全に再読み込み(Ctrl+F5)\n• ブラウザキャッシュをクリア\n• 別のブラウザで試行\n• 管理者に問い合わせ`);
             }
         }
 
+        // Enhanced error display with auto-dismiss and styling
         function showError(message) {
             // Remove existing error messages
             const existingErrors = document.querySelectorAll('.error');
@@ -1363,14 +1541,23 @@
             // Create new error message
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error';
+            errorDiv.style.whiteSpace = 'pre-line'; // Allow line breaks
+            errorDiv.style.maxWidth = '90%';
+            errorDiv.style.margin = '10px auto';
+            errorDiv.style.fontSize = '14px';
+            errorDiv.style.lineHeight = '1.4';
             errorDiv.textContent = message;
             
             // Insert after header
             const header = document.querySelector('.header');
             header.parentNode.insertBefore(errorDiv, header.nextSibling);
             
-            // Auto-remove after 5 seconds
-            setTimeout(() => errorDiv.remove(), 5000);
+            // Auto-remove after 15 seconds for long error messages
+            setTimeout(() => {
+                if (errorDiv.parentNode) {
+                    errorDiv.remove();
+                }
+            }, 15000);
         }
 
         function showSuccess(message) {
@@ -1381,20 +1568,28 @@
             // Create new success message
             const successDiv = document.createElement('div');
             successDiv.className = 'success';
+            successDiv.style.whiteSpace = 'pre-line';
+            successDiv.style.maxWidth = '90%';
+            successDiv.style.margin = '10px auto';
+            successDiv.style.fontSize = '14px';
+            successDiv.style.lineHeight = '1.4';
             successDiv.textContent = message;
             
             // Insert after header
             const header = document.querySelector('.header');
             header.parentNode.insertBefore(successDiv, header.nextSibling);
             
-            // Auto-remove after 3 seconds
-            setTimeout(() => successDiv.remove(), 3000);
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (successDiv.parentNode) {
+                    successDiv.remove();
+                }
+            }, 5000);
         }
 
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                loadData();
-            }
+        // Update the startAnalysis function to use the enhanced version
+        function startAnalysis() {
+            return startAnalysisWithMonitoring();
         }
 
         // プラットフォーム選択変更時のイベントハンドラー

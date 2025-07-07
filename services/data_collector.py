@@ -5,9 +5,31 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 import logging
+import time
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class PlatformError(Exception):
+    """Base exception for platform-specific errors"""
+    pass
+
+
+class RateLimitError(PlatformError):
+    """Rate limit exceeded error"""
+    def __init__(self, message: str, platform: str, retry_after: int = None):
+        super().__init__(message)
+        self.platform = platform
+        self.retry_after = retry_after
+
+
+class APIError(PlatformError):
+    """General API error"""
+    def __init__(self, message: str, platform: str, status_code: int = None):
+        super().__init__(message)
+        self.platform = platform
+        self.status_code = status_code
 
 
 class TwitterCollector:
@@ -45,7 +67,7 @@ class TwitterCollector:
         max_results: int = 100,
         start_time: Optional[datetime] = None
     ) -> List[Dict[str, Any]]:
-        """Collect tweets based on keywords"""
+        """Collect tweets based on keywords with robust error handling"""
         
         if not self.client:
             await self.initialize()
@@ -56,56 +78,85 @@ class TwitterCollector:
         # Add language filter for Japanese
         query += " lang:ja"
         
-        try:
-            # Use start_time if provided, otherwise last 7 days
-            if not start_time:
-                start_time = datetime.now(timezone.utc) - timedelta(days=7)
-            
-            # Search tweets
-            response = self.client.search_recent_tweets(
-                query=query,
-                max_results=min(max_results, 100),  # API limit
-                start_time=start_time,
-                tweet_fields=['public_metrics', 'created_at', 'author_id', 'context_annotations'],
-                expansions=['author_id'],
-                user_fields=['public_metrics', 'username', 'name']
-            )
-            
-            if not response.data:
-                logger.info("No tweets found for the given keywords")
+        max_retries = 3
+        retry_delay = 1
+        
+        for attempt in range(max_retries):
+            try:
+                # Use start_time if provided, otherwise last 7 days
+                if not start_time:
+                    start_time = datetime.now(timezone.utc) - timedelta(days=7)
+                
+                # Search tweets
+                response = self.client.search_recent_tweets(
+                    query=query,
+                    max_results=min(max_results, 100),  # API limit
+                    start_time=start_time,
+                    tweet_fields=['public_metrics', 'created_at', 'author_id', 'context_annotations'],
+                    expansions=['author_id'],
+                    user_fields=['public_metrics', 'username', 'name']
+                )
+                
+                if not response.data:
+                    logger.info("No tweets found for the given keywords")
+                    return tweets
+                
+                # Process tweets
+                users = {user.id: user for user in response.includes.get('users', [])}
+                
+                for tweet in response.data:
+                    author = users.get(tweet.author_id)
+                    
+                    tweet_data = {
+                        'external_id': str(tweet.id),
+                        'platform': 'twitter',
+                        'content': tweet.text,
+                        'author': author.username if author else 'unknown',
+                        'author_followers': author.public_metrics['followers_count'] if author else 0,
+                        'url': f"https://twitter.com/{author.username}/status/{tweet.id}" if author else '',
+                        'posted_at': tweet.created_at,
+                        'collected_at': datetime.now(timezone.utc),
+                        'likes': tweet.public_metrics.get('like_count', 0),
+                        'shares': tweet.public_metrics.get('retweet_count', 0),
+                        'comments': tweet.public_metrics.get('reply_count', 0),
+                        'hashtags': self._extract_hashtags(tweet.text),
+                        'mentions': self._extract_mentions(tweet.text),
+                        'media_urls': []
+                    }
+                    
+                    tweets.append(tweet_data)
+                    
+                logger.info(f"Successfully collected {len(tweets)} tweets for keywords: {keywords}")
                 return tweets
-            
-            # Process tweets
-            users = {user.id: user for user in response.includes.get('users', [])}
-            
-            for tweet in response.data:
-                author = users.get(tweet.author_id)
                 
-                tweet_data = {
-                    'external_id': str(tweet.id),
-                    'platform': 'twitter',
-                    'content': tweet.text,
-                    'author': author.username if author else 'unknown',
-                    'author_followers': author.public_metrics['followers_count'] if author else 0,
-                    'url': f"https://twitter.com/{author.username}/status/{tweet.id}" if author else '',
-                    'posted_at': tweet.created_at,
-                    'collected_at': datetime.now(timezone.utc),
-                    'likes': tweet.public_metrics.get('like_count', 0),
-                    'shares': tweet.public_metrics.get('retweet_count', 0),
-                    'comments': tweet.public_metrics.get('reply_count', 0),
-                    'hashtags': self._extract_hashtags(tweet.text),
-                    'mentions': self._extract_mentions(tweet.text),
-                    'media_urls': []
-                }
+            except tweepy.TooManyRequests as e:
+                wait_time = getattr(e, 'retry_after', 900)  # Default 15 minutes
+                logger.warning(f"Twitter rate limit exceeded on attempt {attempt + 1}/{max_retries}. "
+                             f"Would wait {wait_time} seconds, but continuing with other platforms.")
+                if attempt == max_retries - 1:
+                    raise RateLimitError(
+                        f"Twitter rate limit exceeded. Retry after {wait_time} seconds.",
+                        platform="twitter",
+                        retry_after=wait_time
+                    )
+                # Short delay before retry
+                await asyncio.sleep(min(retry_delay * (2 ** attempt), 30))
                 
-                tweets.append(tweet_data)
+            except tweepy.Forbidden as e:
+                logger.error(f"Twitter API access forbidden: {e}")
+                raise APIError(f"Twitter API access forbidden: {e}", platform="twitter", status_code=403)
                 
-            logger.info(f"Collected {len(tweets)} tweets for keywords: {keywords}")
-            return tweets
-            
-        except Exception as e:
-            logger.error(f"Error collecting tweets: {e}")
-            return []
+            except tweepy.Unauthorized as e:
+                logger.error(f"Twitter API unauthorized: {e}")
+                raise APIError(f"Twitter API unauthorized: {e}", platform="twitter", status_code=401)
+                
+            except Exception as e:
+                logger.error(f"Unexpected Twitter API error on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt == max_retries - 1:
+                    raise APIError(f"Twitter API error: {e}", platform="twitter")
+                await asyncio.sleep(retry_delay * (2 ** attempt))
+        
+        return tweets
 
     def _extract_hashtags(self, text: str) -> List[str]:
         """Extract hashtags from tweet text"""
@@ -134,37 +185,69 @@ class YouTubeCollector:
         keywords: List[str], 
         max_results: int = 100
     ) -> List[Dict[str, Any]]:
-        """Collect YouTube comments based on keywords"""
+        """Collect YouTube comments based on keywords with robust error handling"""
         
         if not self.api_key:
             logger.warning("YouTube API key not available. Skipping YouTube data collection.")
             return []
         
         comments = []
+        max_retries = 3
+        retry_delay = 1
         
-        try:
-            # First, search for videos
-            video_ids = await self._search_videos(keywords, max_results=10)
-            
-            if not video_ids:
-                logger.info("No videos found for the given keywords")
+        for attempt in range(max_retries):
+            try:
+                # First, search for videos
+                video_ids = await self._search_videos(keywords, max_results=10)
+                
+                if not video_ids:
+                    logger.info("No videos found for the given keywords")
+                    return comments
+                
+                # Collect comments from videos
+                async with httpx.AsyncClient() as client:
+                    for video_id in video_ids:
+                        try:
+                            video_comments = await self._get_video_comments(client, video_id, max_results//len(video_ids))
+                            comments.extend(video_comments)
+                            
+                            # Rate limiting
+                            await asyncio.sleep(settings.RATE_LIMIT_DELAY)
+                        except Exception as e:
+                            logger.warning(f"Failed to get comments for video {video_id}: {e}")
+                            continue
+                
+                logger.info(f"Successfully collected {len(comments)} YouTube comments")
                 return comments
-            
-            # Collect comments from videos
-            async with httpx.AsyncClient() as client:
-                for video_id in video_ids:
-                    video_comments = await self._get_video_comments(client, video_id, max_results//len(video_ids))
-                    comments.extend(video_comments)
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    wait_time = int(e.response.headers.get('Retry-After', 60))
+                    logger.warning(f"YouTube rate limit exceeded on attempt {attempt + 1}/{max_retries}. "
+                                 f"Would wait {wait_time} seconds, but continuing with other platforms.")
+                    if attempt == max_retries - 1:
+                        raise RateLimitError(
+                            f"YouTube rate limit exceeded. Retry after {wait_time} seconds.",
+                            platform="youtube",
+                            retry_after=wait_time
+                        )
+                    await asyncio.sleep(min(retry_delay * (2 ** attempt), 30))
+                elif e.response.status_code == 403:
+                    logger.error(f"YouTube API access forbidden: {e}")
+                    raise APIError(f"YouTube API access forbidden: {e}", platform="youtube", status_code=403)
+                else:
+                    logger.error(f"YouTube API HTTP error on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt == max_retries - 1:
+                        raise APIError(f"YouTube API error: {e}", platform="youtube", status_code=e.response.status_code)
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
                     
-                    # Rate limiting
-                    await asyncio.sleep(settings.RATE_LIMIT_DELAY)
-            
-            logger.info(f"Collected {len(comments)} YouTube comments")
-            return comments
-            
-        except Exception as e:
-            logger.error(f"Error collecting YouTube comments: {e}")
-            return []
+            except Exception as e:
+                logger.error(f"Unexpected YouTube API error on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt == max_retries - 1:
+                    raise APIError(f"YouTube API error: {e}", platform="youtube")
+                await asyncio.sleep(retry_delay * (2 ** attempt))
+        
+        return comments
 
     async def _search_videos(self, keywords: List[str], max_results: int = 10) -> List[str]:
         """Search for YouTube videos"""
@@ -287,40 +370,72 @@ class RedditCollector:
         subreddits: List[str] = None,
         max_results: int = 100
     ) -> List[Dict[str, Any]]:
-        """Collect Reddit posts based on keywords"""
+        """Collect Reddit posts based on keywords with robust error handling"""
         
         if not self.access_token:
             await self.initialize()
         
         posts = []
+        max_retries = 3
+        retry_delay = 1
         
         # Default subreddits if none provided
         if not subreddits:
             subreddits = ['all']
         
-        try:
-            async with httpx.AsyncClient() as client:
-                headers = {
-                    'Authorization': f'Bearer {self.access_token}',
-                    'User-Agent': self.user_agent
-                }
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    headers = {
+                        'Authorization': f'Bearer {self.access_token}',
+                        'User-Agent': self.user_agent
+                    }
+                    
+                    for subreddit in subreddits:
+                        for keyword in keywords:
+                            try:
+                                subreddit_posts = await self._search_subreddit(
+                                    client, headers, subreddit, keyword, max_results//len(subreddits)//len(keywords)
+                                )
+                                posts.extend(subreddit_posts)
+                                
+                                # Rate limiting
+                                await asyncio.sleep(settings.RATE_LIMIT_DELAY)
+                            except Exception as e:
+                                logger.warning(f"Failed to search subreddit {subreddit} for keyword {keyword}: {e}")
+                                continue
                 
-                for subreddit in subreddits:
-                    for keyword in keywords:
-                        subreddit_posts = await self._search_subreddit(
-                            client, headers, subreddit, keyword, max_results//len(subreddits)//len(keywords)
+                logger.info(f"Successfully collected {len(posts)} Reddit posts")
+                return posts
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    wait_time = int(e.response.headers.get('Retry-After', 60))
+                    logger.warning(f"Reddit rate limit exceeded on attempt {attempt + 1}/{max_retries}. "
+                                 f"Would wait {wait_time} seconds, but continuing with other platforms.")
+                    if attempt == max_retries - 1:
+                        raise RateLimitError(
+                            f"Reddit rate limit exceeded. Retry after {wait_time} seconds.",
+                            platform="reddit",
+                            retry_after=wait_time
                         )
-                        posts.extend(subreddit_posts)
-                        
-                        # Rate limiting
-                        await asyncio.sleep(settings.RATE_LIMIT_DELAY)
-            
-            logger.info(f"Collected {len(posts)} Reddit posts")
-            return posts
-            
-        except Exception as e:
-            logger.error(f"Error collecting Reddit posts: {e}")
-            return []
+                    await asyncio.sleep(min(retry_delay * (2 ** attempt), 30))
+                elif e.response.status_code == 401:
+                    logger.error(f"Reddit API unauthorized: {e}")
+                    raise APIError(f"Reddit API unauthorized: {e}", platform="reddit", status_code=401)
+                else:
+                    logger.error(f"Reddit API HTTP error on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt == max_retries - 1:
+                        raise APIError(f"Reddit API error: {e}", platform="reddit", status_code=e.response.status_code)
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
+                    
+            except Exception as e:
+                logger.error(f"Unexpected Reddit API error on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt == max_retries - 1:
+                    raise APIError(f"Reddit API error: {e}", platform="reddit")
+                await asyncio.sleep(retry_delay * (2 ** attempt))
+        
+        return posts
 
     async def _search_subreddit(
         self,
@@ -409,7 +524,7 @@ class SocialMediaCollector:
         platforms: List[str] = None,
         max_results_per_platform: int = 100
     ) -> List[Dict[str, Any]]:
-        """Collect data from all enabled platforms"""
+        """Collect data from all enabled platforms with resilient error handling"""
         
         # Filter platforms to only include available ones
         available_platforms = self.get_available_platforms()
@@ -426,30 +541,73 @@ class SocialMediaCollector:
         
         logger.info(f"Collecting data from platforms: {platforms}")
         all_posts = []
+        failed_platforms = []
+        successful_platforms = []
         
         # Collect from Twitter
         if 'twitter' in platforms:
             try:
                 tweets = await self.twitter.collect_tweets(keywords, max_results_per_platform)
                 all_posts.extend(tweets)
+                successful_platforms.append('twitter')
+                logger.info(f"✅ Twitter: Successfully collected {len(tweets)} tweets")
+            except RateLimitError as e:
+                logger.warning(f"⏳ Twitter: Rate limit exceeded - {e.message}")
+                failed_platforms.append({'platform': 'twitter', 'error': 'rate_limit', 'retry_after': e.retry_after})
+            except APIError as e:
+                logger.error(f"❌ Twitter: API error - {e}")
+                failed_platforms.append({'platform': 'twitter', 'error': 'api_error', 'status_code': e.status_code})
             except Exception as e:
-                logger.error(f"Twitter collection failed: {e}")
+                logger.error(f"❌ Twitter: Unexpected error - {e}")
+                failed_platforms.append({'platform': 'twitter', 'error': 'unexpected_error'})
         
         # Collect from YouTube
         if 'youtube' in platforms:
             try:
                 youtube_comments = await self.youtube.collect_comments(keywords, max_results_per_platform)
                 all_posts.extend(youtube_comments)
+                successful_platforms.append('youtube')
+                logger.info(f"✅ YouTube: Successfully collected {len(youtube_comments)} comments")
+            except RateLimitError as e:
+                logger.warning(f"⏳ YouTube: Rate limit exceeded - {e.message}")
+                failed_platforms.append({'platform': 'youtube', 'error': 'rate_limit', 'retry_after': e.retry_after})
+            except APIError as e:
+                logger.error(f"❌ YouTube: API error - {e}")
+                failed_platforms.append({'platform': 'youtube', 'error': 'api_error', 'status_code': e.status_code})
             except Exception as e:
-                logger.error(f"YouTube collection failed: {e}")
+                logger.error(f"❌ YouTube: Unexpected error - {e}")
+                failed_platforms.append({'platform': 'youtube', 'error': 'unexpected_error'})
         
         # Collect from Reddit
         if 'reddit' in platforms:
             try:
                 reddit_posts = await self.reddit.collect_posts(keywords, max_results=max_results_per_platform)
                 all_posts.extend(reddit_posts)
+                successful_platforms.append('reddit')
+                logger.info(f"✅ Reddit: Successfully collected {len(reddit_posts)} posts")
+            except RateLimitError as e:
+                logger.warning(f"⏳ Reddit: Rate limit exceeded - {e.message}")
+                failed_platforms.append({'platform': 'reddit', 'error': 'rate_limit', 'retry_after': e.retry_after})
+            except APIError as e:
+                logger.error(f"❌ Reddit: API error - {e}")
+                failed_platforms.append({'platform': 'reddit', 'error': 'api_error', 'status_code': e.status_code})
             except Exception as e:
-                logger.error(f"Reddit collection failed: {e}")
+                logger.error(f"❌ Reddit: Unexpected error - {e}")
+                failed_platforms.append({'platform': 'reddit', 'error': 'unexpected_error'})
         
-        logger.info(f"Total collected posts: {len(all_posts)} from platforms: {platforms}")
+        # Log summary
+        logger.info(f"🎯 Collection Summary:")
+        logger.info(f"   📊 Total posts collected: {len(all_posts)}")
+        logger.info(f"   ✅ Successful platforms: {successful_platforms}")
+        if failed_platforms:
+            logger.warning(f"   ❌ Failed platforms: {[p['platform'] for p in failed_platforms]}")
+            for failure in failed_platforms:
+                if failure['error'] == 'rate_limit':
+                    logger.warning(f"      {failure['platform']}: Rate limit (retry after {failure.get('retry_after', 'unknown')}s)")
+                elif failure['error'] == 'api_error':
+                    logger.warning(f"      {failure['platform']}: API error (status {failure.get('status_code', 'unknown')})")
+                else:
+                    logger.warning(f"      {failure['platform']}: {failure['error']}")
+        
+        # Return results even if some platforms failed
         return all_posts

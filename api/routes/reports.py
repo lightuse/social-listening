@@ -6,6 +6,8 @@ import sqlite3
 import json
 import logging
 import random
+import io
+import csv
 from pathlib import Path
 
 from core.database import get_db
@@ -55,7 +57,9 @@ async def get_comprehensive_report(
                 Post.content.contains(keyword)
             )
         
-        posts = query.all()        # レポートの基本構造を作成
+        posts = query.all()
+        
+        # レポートの基本構造を作成
         logger.info("Creating report structure...")
         
         try:
@@ -554,33 +558,58 @@ def _extract_trending_topics(posts: List[Post]) -> List[Dict[str, Any]]:
         
         # 1. 投稿内容からキーワードを抽出
         if post.content:
+            # HTMLタグを除去
+            clean_content = re.sub(r'<[^>]+>', '', post.content)
+            # URLを除去
+            clean_content = re.sub(r'https?://[^\s<>"]+', '', clean_content)
+            # 数字のみの文字列を除去
+            clean_content = re.sub(r'\b\d+\b', '', clean_content)
+            
             # ハッシュタグを抽出
-            hashtags = re.findall(r'#(\w+)', post.content)
+            hashtags = re.findall(r'#(\w+)', clean_content)
             topics_found.extend(hashtags)
             
             # 日本語キーワード（2文字以上）
-            jp_keywords = re.findall(r'[あ-んア-ン一-龯]{2,}', post.content)
+            jp_keywords = re.findall(r'[あ-んア-ン一-龯]{2,}', clean_content)
             # よくある無意味な語を除外
             stop_words = {'です', 'ます', 'した', 'ある', 'ない', 'これ', 'それ', 'あれ', 'どれ', 'こと', 'もの', 'よう', 'みたい'}
             jp_keywords = [kw for kw in jp_keywords if kw not in stop_words and len(kw) >= 2]
             topics_found.extend(jp_keywords[:3])  # 上位3個まで
             
             # 英語キーワード（3文字以上）
-            en_keywords = re.findall(r'\b[A-Za-z]{3,}\b', post.content)
-            en_stop_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'has', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'get', 'man', 'own', 'say', 'she', 'too', 'use'}
-            en_keywords = [kw.lower() for kw in en_keywords if kw.lower() not in en_stop_words and len(kw) >= 3]
+            en_keywords = re.findall(r'\b[A-Za-z]{3,}\b', clean_content)
+            # 包括的な英語ストップワードリスト
+            en_stop_words = {
+                # 基本的な英語ストップワード
+                'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'has', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'get', 'man', 'own', 'say', 'she', 'too', 'use',
+                # 追加の基本ストップワード
+                'that', 'this', 'with', 'they', 'will', 'have', 'from', 'been', 'were', 'said', 'each', 'which', 'there', 'what', 'would', 'about', 'after', 'first', 'never', 'these', 'think', 'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those', 'under', 'while', 'could', 'state', 'should', 'over', 'such', 'way', 'many', 'then', 'them', 'well', 'were', 'much', 'your', 'any', 'may', 'say', 'she', 'her', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'its', 'let', 'put', 'end', 'why', 'try', 'god', 'six', 'dog', 'eat', 'ago', 'sit', 'fun', 'bad', 'yes', 'yet', 'arm', 'far', 'off', 'ill', 'own', 'red', 'top', 'add', 'big', 'hot', 'nor', 'pot', 'cut', 'got', 'ran', 'run', 'son', 'sun', 'war', 'win', 'won', 'ask', 'buy', 'car', 'cry', 'die', 'eye', 'fly', 'job', 'key', 'lay', 'lot', 'oil', 'pay', 'sea', 'sky', 'ten', 'try', 'win',
+                # 頻出する動詞・形容詞・副詞
+                'like', 'look', 'make', 'take', 'come', 'give', 'know', 'think', 'want', 'work', 'feel', 'seem', 'call', 'keep', 'turn', 'show', 'move', 'live', 'mean', 'leave', 'right', 'good', 'long', 'great', 'little', 'own', 'other', 'old', 'right', 'big', 'high', 'different', 'small', 'large', 'next', 'early', 'young', 'important', 'few', 'public', 'same', 'able', 'back', 'sure', 'become', 'help', 'hand', 'part', 'child', 'eye', 'woman', 'place', 'work', 'week', 'case', 'point', 'government', 'company', 'number', 'group', 'problem', 'fact', 'right', 'study', 'book', 'word', 'business', 'issue', 'side', 'kind', 'head', 'house', 'service', 'friend', 'father', 'power', 'hour', 'game', 'line', 'end', 'member', 'law', 'car', 'city', 'name', 'team', 'minute', 'idea', 'kid', 'body', 'information', 'nothing', 'ago', 'money', 'story', 'today', 'lot', 'water', 'away', 'far', 'sea', 'against', 'top', 'turn', 'start', 'might', 'around', 'close', 'sound', 'real', 'upon', 'read', 'change', 'off', 'play', 'spell', 'air', 'away', 'land', 'here', 'must', 'big', 'even', 'such', 'because', 'turn', 'here', 'why', 'ask', 'went', 'men', 'read', 'need', 'land', 'different', 'home', 'move', 'try', 'kind', 'hand', 'picture', 'again', 'change', 'off', 'play', 'spell', 'air', 'away', 'animal', 'house', 'point', 'page', 'letter', 'mother', 'answer', 'found', 'study', 'still', 'learn', 'should', 'america', 'world'
+                # HTML・Web関連
+                'href', 'http', 'https', 'www', 'com', 'org', 'net', 'html', 'htm', 'php', 'asp', 'jsp', 'css', 'div', 'span', 'img', 'src', 'alt', 'title', 'class', 'style', 'link', 'script', 'meta', 'head', 'body', 'form', 'input', 'button', 'textarea', 'select', 'option', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'br', 'hr', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'code', 'blockquote', 'address', 'cite', 'abbr', 'acronym', 'ins', 'del', 'sub', 'sup', 'strong', 'em', 'dfn', 'samp', 'kbd', 'var', 'small', 'big', 'tt', 'font', 'center', 'strike', 'u', 'i', 'b', 'bdo', 'q', 'object', 'embed', 'param', 'applet', 'iframe', 'frame', 'frameset', 'noframes', 'noscript', 'map', 'area', 'base', 'basefont', 'bgsound', 'marquee', 'multicol', 'nobr', 'spacer', 'wbr', 'xmp', 'plaintext', 'listing', 'nextid', 'isindex', 'comment', 'xml', 'DOCTYPE', 'xmlns', 'version', 'encoding', 'standalone', 'PUBLIC', 'SYSTEM', 'CDATA', 'ENTITY', 'NOTATION', 'ELEMENT', 'ATTLIST', 'IGNORE', 'INCLUDE', 'PCDATA', 'EMPTY', 'ANY', 'FIXED', 'REQUIRED', 'IMPLIED', 'ID', 'IDREF', 'IDREFS', 'NMTOKEN', 'NMTOKENS', 'NDATA',
+                'quot', 'amp', 'apos', 'lt', 'gt', 'nbsp', 'iexcl', 'cent', 'pound', 'curren', 'yen', 'brvbar', 'sect', 'uml', 'copy', 'ordf', 'laquo', 'not', 'shy', 'reg', 'macr', 'deg', 'plusmn', 'sup2', 'sup3', 'acute', 'micro', 'para', 'middot', 'cedil', 'sup1', 'ordm', 'raquo', 'frac14', 'frac12', 'frac34', 'iquest'
+            }
+            en_keywords = [kw.lower() for kw in en_keywords if kw.lower() not in en_stop_words and len(kw) >= 3 and not kw.isdigit()]
             topics_found.extend(en_keywords[:2])  # 上位2個まで
         
         # 3. 感情分析データから抽出されたトピックも使用
         if post.analyses:
             for analysis in post.analyses:
                 if analysis.topics and isinstance(analysis.topics, list):
-                    topics_found.extend(analysis.topics)
+                    # 感情分析から得られたトピックもクリーニング
+                    clean_topics = [topic.strip() for topic in analysis.topics if topic and len(str(topic).strip()) >= 2]
+                    topics_found.extend(clean_topics)
         
         # トピックカウントと感情分析
         for topic in topics_found:
             if topic and len(str(topic).strip()) >= 2:  # 2文字以上のトピックのみ
-                topic = str(topic).strip()
+                topic = str(topic).strip().lower()  # 小文字に統一
+                
+                # 意味のないトピックを除外
+                if topic.isdigit() or len(topic) < 2:
+                    continue
+                    
                 topic_counts[topic] += 1
                 
                 # 感情分析結果を関連付け
@@ -594,10 +623,45 @@ def _extract_trending_topics(posts: List[Post]) -> List[Dict[str, Any]]:
     
     # 上位トピックを作成（最小出現回数でフィルタリング）
     trending = []
-    for topic, count in topic_counts.most_common(15):
-        if count < 2:  # 最低2回は出現する必要がある
-            continue
-            
+    
+    # 出現回数別にトピックを分類
+    high_freq_topics = []  # 2回以上
+    low_freq_topics = []   # 1回
+    
+    for topic, count in topic_counts.most_common(50):  # より多くのトピックを検討
+        if count >= 2:
+            high_freq_topics.append((topic, count))
+        elif count == 1:
+            low_freq_topics.append((topic, count))
+    
+    # 高頻度トピックを優先し、不足分を低頻度トピックで補完
+    selected_topics = high_freq_topics[:8]  # 高頻度トピックを最大8個
+    remaining_slots = 10 - len(selected_topics)
+    
+    if remaining_slots > 0:
+        # 低頻度トピックから意味のあるものを選択
+        filtered_low_freq = []
+        # より包括的なストップワードリスト（低頻度トピック用）
+        extended_stop_words = {
+            'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'has', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'get', 'man', 'own', 'say', 'she', 'too', 'use',
+            'that', 'this', 'with', 'they', 'will', 'have', 'from', 'been', 'were', 'said', 'each', 'which', 'there', 'what', 'would', 'about', 'after', 'first', 'never', 'these', 'think', 'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those', 'under', 'while', 'could', 'state', 'should', 'over', 'such', 'way', 'many', 'then', 'them', 'well', 'were', 'much', 'your', 'any', 'may', 'say', 'she', 'her', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'its', 'let', 'put', 'end', 'why', 'try', 'god', 'six', 'dog', 'eat', 'ago', 'sit', 'fun', 'bad', 'yes', 'yet', 'arm', 'far', 'off', 'ill', 'own', 'red', 'top', 'add', 'big', 'hot', 'nor', 'pot', 'cut', 'got', 'ran', 'run', 'son', 'sun', 'war', 'win', 'won', 'ask', 'buy', 'car', 'cry', 'die', 'eye', 'fly', 'job', 'key', 'lay', 'lot', 'oil', 'pay', 'sea', 'sky', 'ten', 'try', 'win',
+            'like', 'look', 'make', 'take', 'come', 'give', 'know', 'think', 'want', 'work', 'feel', 'seem', 'call', 'keep', 'turn', 'show', 'move', 'live', 'mean', 'leave', 'right', 'good', 'long', 'little', 'other', 'back', 'sure', 'become', 'help', 'hand', 'part', 'child', 'eye', 'woman', 'place', 'week', 'case', 'point', 'number', 'group', 'problem', 'fact', 'study', 'book', 'word', 'issue', 'side', 'kind', 'head', 'house', 'service', 'friend', 'father', 'power', 'hour', 'game', 'line', 'end', 'member', 'law', 'car', 'city', 'name', 'team', 'minute', 'idea', 'kid', 'body', 'information', 'nothing', 'ago', 'money', 'story', 'today', 'lot', 'water', 'away', 'far', 'sea', 'against', 'top', 'turn', 'start', 'might', 'around', 'close', 'sound', 'real', 'upon', 'read', 'change', 'off', 'play', 'spell', 'air', 'away', 'land', 'here', 'must', 'big', 'even', 'such', 'because', 'turn', 'here', 'why', 'ask', 'went', 'men', 'read', 'need', 'land', 'different', 'home', 'move', 'try', 'kind', 'hand', 'picture', 'again', 'change', 'off', 'play', 'spell', 'air', 'away', 'animal', 'house', 'point', 'page', 'letter', 'mother', 'answer', 'found', 'study', 'still', 'learn', 'should', 'america', 'world'
+        }
+        
+        for topic, count in low_freq_topics:
+            # より厳格な意味のあるトピック選択
+            if (len(topic) >= 4 and  # 4文字以上に変更
+                not topic.isdigit() and 
+                any(c.isalpha() for c in topic) and 
+                topic.lower() not in extended_stop_words and
+                not topic.lower().startswith(('http', 'www', 'com', 'org')) and
+                any(c in 'bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ' for c in topic)):  # 子音を含む（より意味のある語彙）
+                filtered_low_freq.append((topic, count))
+        
+        selected_topics.extend(filtered_low_freq[:remaining_slots])
+    
+    # 選択されたトピックを処理
+    for topic, count in selected_topics:
         sentiment_data = topic_sentiment[topic]
         total = sum(sentiment_data.values())
         
@@ -615,6 +679,9 @@ def _extract_trending_topics(posts: List[Post]) -> List[Dict[str, Any]]:
             },
             "dominant_sentiment": max(sentiment_data.keys(), key=lambda k: sentiment_data[k]) if sentiment_data else "neutral"
         })
+    
+    # 頻度順にソート
+    trending.sort(key=lambda x: x["frequency"], reverse=True)
     
     return trending[:10]  # 上位10個まで
 
@@ -900,3 +967,111 @@ async def clear_sample_data(db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Error clearing sample data: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"サンプルデータ削除エラー: {str(e)}")
+
+@router.post("/safe-analysis")
+async def safe_analysis(
+    keywords: List[str] = Query(..., description="検索キーワード"),
+    platforms: Optional[List[str]] = Query(["youtube"], description="プラットフォーム"),
+    db: Session = Depends(get_db)
+):
+    """安全な分析 - 既存データを使用してモック分析結果を生成"""
+    try:
+        logger.info(f"Safe analysis for keywords: {keywords}, platforms: {platforms}")
+        
+        # 既存の投稿から関連データを検索
+        keyword_filter = " OR ".join([f"content LIKE '%{keyword}%'" for keyword in keywords])
+        
+        # 基本クエリ
+        query = db.query(Post)
+        
+        if platforms:
+            query = query.filter(Post.platform.in_(platforms))
+        
+        # キーワードでフィルタ
+        if keywords:
+            from sqlalchemy import or_
+            conditions = [Post.content.contains(keyword) for keyword in keywords]
+            query = query.filter(or_(*conditions))
+        
+        posts = query.limit(50).all()  # 最大50件
+        
+        if not posts:
+            # データがない場合はサンプルデータを提案
+            return {
+                "status": "no_data",
+                "message": "検索結果がありません。サンプルデータを生成することをお勧めします。",
+                "suggestion": "generate_sample_data",
+                "found_posts": 0
+            }
+        
+        # モック分析結果を生成
+        analysis_results = []
+        for post in posts:
+            # 簡単な感情分析
+            content = post.content.lower()
+            
+            # ポジティブワード
+            positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 
+                            '良い', '素晴らしい', '最高', '最新', '便利', 'おすすめ', '感動']
+            # ネガティブワード  
+            negative_words = ['bad', 'terrible', 'awful', 'horrible', 'worst', 'hate',
+                            '悪い', '最悪', 'ダメ', '困る', '問題', '不満', 'ひどい']
+            
+            positive_count = sum(1 for word in positive_words if word in content)
+            negative_count = sum(1 for word in negative_words if word in content)
+            
+            if positive_count > negative_count:
+                sentiment = "positive"
+                score = 0.7
+            elif negative_count > positive_count:
+                sentiment = "negative" 
+                score = -0.7
+            else:
+                sentiment = "neutral"
+                score = 0.0
+            
+            analysis_results.append({
+                "post_id": post.id,
+                "platform": post.platform,
+                "content_preview": post.content[:100] + "..." if len(post.content) > 100 else post.content,
+                "sentiment": sentiment,
+                "score": score,
+                "confidence": 0.85,
+                "keywords_found": [kw for kw in keywords if kw.lower() in content],
+                "posted_at": post.posted_at.isoformat() if post.posted_at else None,
+                "engagement": {
+                    "likes": post.likes or 0,
+                    "shares": post.shares or 0, 
+                    "comments": post.comments or 0
+                }
+            })
+        
+        # 結果サマリー
+        total_posts = len(analysis_results)
+        sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
+        
+        for result in analysis_results:
+            sentiment_counts[result["sentiment"]] += 1
+        
+        sentiment_percentages = {
+            sentiment: round((count / total_posts) * 100, 2) if total_posts > 0 else 0
+            for sentiment, count in sentiment_counts.items()
+        }
+        
+        return {
+            "status": "completed",
+            "message": f"{total_posts}件の投稿を分析しました",
+            "summary": {
+                "total_posts": total_posts,
+                "keywords": keywords,
+                "platforms": platforms,
+                "sentiment_distribution": sentiment_percentages,
+                "analysis_time": datetime.now().isoformat()
+            },
+            "results": analysis_results[:20],  # 最初の20件のみ返す
+            "has_more": total_posts > 20
+        }
+        
+    except Exception as e:
+        logger.error(f"Safe analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"安全な分析エラー: {str(e)}")

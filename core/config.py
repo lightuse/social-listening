@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     COLLECTION_INTERVAL: int = 3600
     MAX_POSTS_PER_COLLECTION: int = 1000
     RATE_LIMIT_DELAY: float = 1.0
+    
+    # Rate limiting settings
+    TWITTER_RATE_LIMIT_WINDOW: int = 900  # 15 minutes
+    TWITTER_MAX_REQUESTS_PER_WINDOW: int = 300
+    YOUTUBE_RATE_LIMIT_WINDOW: int = 3600  # 1 hour
+    YOUTUBE_MAX_REQUESTS_PER_WINDOW: int = 10000
+    REDDIT_RATE_LIMIT_WINDOW: int = 600  # 10 minutes
+    REDDIT_MAX_REQUESTS_PER_WINDOW: int = 100
+    
+    # Retry settings
+    MAX_RETRIES: int = 3
+    RETRY_DELAY: float = 1.0
+    MAX_RETRY_DELAY: float = 30.0
 
     # AI model settings
     DEFAULT_MODEL: str = "amazon.nova-lite-v1:0"
