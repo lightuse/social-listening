@@ -50,12 +50,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Include routers (reports first to avoid route conflicts)
-app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+# Include API routes
 app.include_router(analysis.router, prefix="/api/v1", tags=["analysis"])
+app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
 
 
 @app.get("/")
@@ -92,12 +89,11 @@ async def faq_page():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint for load balancer and ECS"""
     return {
-        "status": "healthy",
-        "service": "social-listening",
-        "version": "1.0.0",
-        "environment": settings.ENVIRONMENT
+        "status": "healthy", 
+        "service": settings.APP_NAME,
+        "timestamp": datetime.now().isoformat()
     }
 
 
@@ -204,14 +200,14 @@ async def get_comprehensive_report(
         # サマリー統計
         try:
             # まずテーブルの存在確認
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='social_posts'")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='posts'")
             table_exists = cursor.fetchone()
             
             if not table_exists:
-                logger.warning("Table 'social_posts' does not exist")
+                logger.warning("Table 'posts' does not exist")
                 report["insights"].append({
                     "title": "データベース設定",
-                    "description": "social_postsテーブルが見つかりません。初期化が必要です。",
+                    "description": "postsテーブルが見つかりません。初期化が必要です。",
                     "priority": "high"
                 })
                 conn.close()
@@ -235,22 +231,14 @@ async def get_comprehensive_report(
                 logger.info(f"Total records in posts (new structure): {total_records}")
                 table_structure = "new"
             else:
-                # Old table structure fallback
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='social_posts'")
-                if not cursor.fetchone():
-                    logger.warning("Neither new nor old table structure found")
-                    report["insights"].append({
-                        "title": "データベースエラー",
-                        "description": "テーブル構造が見つかりません。データベースの初期化が必要です。",
-                        "priority": "high"
-                    })
-                    conn.close()
-                    return report
-                
-                cursor.execute("SELECT COUNT(*) FROM social_posts")
-                total_records = cursor.fetchone()[0]
-                logger.info(f"Total records in social_posts (old structure): {total_records}")
-                table_structure = "old"
+                logger.warning("Required tables not found")
+                report["insights"].append({
+                    "title": "データベースエラー",
+                    "description": "テーブル構造が見つかりません。データベースの初期化が必要です。",
+                    "priority": "high"
+                })
+                conn.close()
+                return report
             
             if total_records == 0:
                 logger.warning("No records found in database")

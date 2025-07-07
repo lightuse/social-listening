@@ -42,7 +42,7 @@ def test_health_check(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["service"] == "social-listening"
+    assert data["service"] == "Social Listening System"
 
 
 def test_system_status(client):

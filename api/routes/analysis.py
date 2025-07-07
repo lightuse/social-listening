@@ -459,8 +459,10 @@ async def run_analysis_task(
     platforms: List[str],
     max_posts_per_platform: int
 ):
-    """Background task to run sentiment analysis"""
+    """Background task to run sentiment analysis with resilient error handling"""
     from core.database import SessionLocal
+    import asyncio
+    from services.data_collector import RateLimitError, APIError
     
     db = SessionLocal()
     
@@ -475,10 +477,17 @@ async def run_analysis_task(
         task.started_at = datetime.now(timezone.utc)
         db.commit()
         
-        logger.info(f"Starting analysis task {task_id} for platforms: {platforms}, keywords: {keywords}")
+        logger.info(f"🚀 Starting analysis task {task_id} for platforms: {platforms}, keywords: {keywords}")
         
-        # Initialize services
-        await sentiment_engine.initialize()
+        # Initialize services with timeout
+        try:
+            await asyncio.wait_for(sentiment_engine.initialize(), timeout=30.0)
+            logger.info("✅ Sentiment engine initialized successfully")
+        except asyncio.TimeoutError:
+            raise Exception("Sentiment engine initialization timed out")
+        except Exception as e:
+            logger.error(f"❌ Sentiment engine initialization failed: {e}")
+            raise Exception(f"Sentiment engine initialization failed: {str(e)}")
         
         # Check which platforms are actually available
         available_platforms = data_collector.get_available_platforms()
@@ -490,17 +499,29 @@ async def run_analysis_task(
         # Log platform availability
         for platform in platforms:
             if platform in available_platforms:
-                logger.info(f"Platform {platform}: API credentials available")
+                logger.info(f"✅ Platform {platform}: API credentials available")
             else:
-                logger.warning(f"Platform {platform}: API credentials not available, skipping")
+                logger.warning(f"⚠️  Platform {platform}: API credentials not available, skipping")
         
-        # Collect posts with platform-specific error handling
-        logger.info(f"Collecting posts from {len(valid_platforms)} platforms: {valid_platforms}")
-        posts = await data_collector.collect_all_platforms(
-            keywords, valid_platforms, max_posts_per_platform
-        )
+        # Collect posts with platform-specific error handling and timeout
+        logger.info(f"📊 Collecting posts from {len(valid_platforms)} platforms: {valid_platforms}")
+        posts = []
+        collection_errors = []
         
-        logger.info(f"Collected {len(posts)} total posts from all platforms")
+        try:
+            posts = await asyncio.wait_for(
+                data_collector.collect_all_platforms(
+                    keywords, valid_platforms, max_posts_per_platform
+                ),
+                timeout=300.0  # 5 minutes timeout
+            )
+            logger.info(f"✅ Collected {len(posts)} total posts from all platforms")
+        except asyncio.TimeoutError:
+            logger.error("⏰ Data collection timed out after 5 minutes")
+            collection_errors.append("Data collection timed out after 5 minutes")
+        except Exception as e:
+            logger.error(f"❌ Data collection failed: {e}")
+            collection_errors.append(f"Data collection failed: {str(e)}")
         
         # Platform-specific collection summary
         platform_counts = {}
@@ -509,50 +530,99 @@ async def run_analysis_task(
             platform_counts[platform] = platform_counts.get(platform, 0) + 1
         
         for platform, count in platform_counts.items():
-            logger.info(f"Platform {platform}: {count} posts collected")
+            logger.info(f"📊 Platform {platform}: {count} posts collected")
+        
+        # If no posts collected, don't fail the task entirely
+        if not posts:
+            logger.warning("⚠️  No posts collected from any platform")
+            task.status = "completed"
+            task.completed_at = datetime.now(timezone.utc)
+            task.posts_collected = 0
+            task.platforms_used = ",".join(valid_platforms)
+            if collection_errors:
+                task.errors = collection_errors
+            db.commit()
+            return
         
         # Save posts to database
         posts_saved = 0
+        analysis_errors = []
+        
         for post_data in posts:
-            # Check if post already exists
-            existing = db.query(Post).filter(Post.external_id == post_data['external_id']).first()
-            if existing:
-                logger.debug(f"Post {post_data['external_id']} already exists, skipping")
-                continue
-            
-            # Save post
-            post = Post(**post_data)
-            db.add(post)
-            db.flush()
-            
-            # Analyze sentiment
-            analysis_result = await sentiment_engine.analyze_sentiment(
-                post_data['content'], keywords
-            )
-            
-            # Save analysis for each keyword
-            for keyword in keywords:
-                keyword_obj = db.query(Keyword).filter(Keyword.term == keyword).first()
-                if not keyword_obj:
-                    keyword_obj = Keyword(term=keyword, platforms=valid_platforms)
-                    db.add(keyword_obj)
-                    db.flush()
+            try:
+                # Check if post already exists
+                existing = db.query(Post).filter(Post.external_id == post_data['external_id']).first()
+                if existing:
+                    logger.debug(f"Post {post_data['external_id']} already exists, skipping")
+                    continue
                 
-                analysis = SentimentAnalysis(
-                    post_id=post.id,
-                    keyword_id=keyword_obj.id,
-                    sentiment_label=analysis_result.get('sentiment_label'),
-                    sentiment_score=analysis_result.get('sentiment_score'),
-                    confidence=analysis_result.get('confidence'),
-                    emotions=analysis_result.get('emotions'),
-                    topics=analysis_result.get('topics'),
-                    keywords_found=analysis_result.get('keywords_found'),
-                    model_used=analysis_result.get('model_used'),
-                    analysis_version=analysis_result.get('analysis_version')
-                )
-                db.add(analysis)
-            
-            posts_saved += 1
+                # Save post
+                post = Post(**post_data)
+                db.add(post)
+                db.flush()
+                
+                # Analyze sentiment with timeout
+                try:
+                    analysis_result = await asyncio.wait_for(
+                        sentiment_engine.analyze_sentiment(post_data['content'], keywords),
+                        timeout=30.0  # 30 seconds per analysis
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Sentiment analysis timed out for post {post.id}")
+                    # Create a default analysis result
+                    analysis_result = {
+                        'sentiment_label': 'neutral',
+                        'sentiment_score': 0.0,
+                        'confidence': 0.0,
+                        'emotions': {},
+                        'topics': [],
+                        'keywords_found': keywords,
+                        'model_used': 'timeout_fallback',
+                        'analysis_version': '1.0'
+                    }
+                except Exception as e:
+                    logger.error(f"❌ Sentiment analysis failed for post {post.id}: {e}")
+                    analysis_errors.append(f"Sentiment analysis failed for post {post.id}: {str(e)}")
+                    # Create a default analysis result
+                    analysis_result = {
+                        'sentiment_label': 'neutral',
+                        'sentiment_score': 0.0,
+                        'confidence': 0.0,
+                        'emotions': {},
+                        'topics': [],
+                        'keywords_found': keywords,
+                        'model_used': 'error_fallback',
+                        'analysis_version': '1.0'
+                    }
+                
+                # Save analysis for each keyword
+                for keyword in keywords:
+                    keyword_obj = db.query(Keyword).filter(Keyword.term == keyword).first()
+                    if not keyword_obj:
+                        keyword_obj = Keyword(term=keyword, platforms=valid_platforms)
+                        db.add(keyword_obj)
+                        db.flush()
+                    
+                    analysis = SentimentAnalysis(
+                        post_id=post.id,
+                        keyword_id=keyword_obj.id,
+                        sentiment_label=analysis_result.get('sentiment_label'),
+                        sentiment_score=analysis_result.get('sentiment_score'),
+                        confidence=analysis_result.get('confidence'),
+                        emotions=analysis_result.get('emotions'),
+                        topics=analysis_result.get('topics'),
+                        keywords_found=analysis_result.get('keywords_found'),
+                        model_used=analysis_result.get('model_used'),
+                        analysis_version=analysis_result.get('analysis_version')
+                    )
+                    db.add(analysis)
+                
+                posts_saved += 1
+                
+            except Exception as e:
+                logger.error(f"❌ Error processing post {post_data.get('external_id', 'unknown')}: {e}")
+                analysis_errors.append(f"Error processing post: {str(e)}")
+                continue
         
         db.commit()
         
@@ -561,12 +631,21 @@ async def run_analysis_task(
         task.completed_at = datetime.now(timezone.utc)
         task.posts_collected = posts_saved
         task.platforms_used = ",".join(valid_platforms)
+        
+        # Combine all errors
+        all_errors = collection_errors + analysis_errors
+        if all_errors:
+            task.errors = all_errors[:10]  # Keep only first 10 errors
+        
         db.commit()
         
-        logger.info(f"Analysis task {task_id} completed successfully. Processed {posts_saved} new posts from platforms: {valid_platforms}")
+        logger.info(f"🎉 Analysis task {task_id} completed successfully!")
+        logger.info(f"   📊 Processed {posts_saved} new posts from platforms: {valid_platforms}")
+        if all_errors:
+            logger.warning(f"   ⚠️  Encountered {len(all_errors)} errors during processing")
         
     except Exception as e:
-        logger.error(f"Analysis task {task_id} failed: {e}", exc_info=True)
+        logger.error(f"❌ Analysis task {task_id} failed: {e}", exc_info=True)
         if 'task' in locals():
             task.status = "failed"
             task.errors = [str(e)]
@@ -1160,12 +1239,58 @@ async def _analyze_trending_topics(posts: List[Post], db: Session) -> Dict[str, 
     # 3. 感情分析結果との関連付け
     sentiment_by_keyword = await _get_sentiment_by_keywords(posts, db)
     
-    # 4. トピックランキング生成
+    # 4. トピックランキング生成 - 改良版
+    high_freq_topics = []  # 3回以上
+    medium_freq_topics = []  # 2回
+    low_freq_topics = []   # 1回
+    
+    for keyword, count in keyword_counts.most_common(100):
+        if count >= 3:
+            high_freq_topics.append((keyword, count))
+        elif count == 2:
+            medium_freq_topics.append((keyword, count))
+        elif count == 1:
+            low_freq_topics.append((keyword, count))
+    
+    # 階層的に選択して品質を向上
+    selected_keywords = []
+    
+    # 高頻度トピック（3回以上）を優先
+    selected_keywords.extend(high_freq_topics[:6])  # 最大6個
+    
+    # 中頻度トピック（2回）を追加
+    remaining_slots = 10 - len(selected_keywords)
+    if remaining_slots > 0:
+        selected_keywords.extend(medium_freq_topics[:min(remaining_slots, 3)])  # 最大3個
+    
+    # 低頻度トピック（1回）で残りを埋める
+    remaining_slots = 10 - len(selected_keywords)
+    if remaining_slots > 0:
+        # 非常に厳格な品質フィルタリング
+        quality_filtered = []
+        for keyword, count in low_freq_topics:
+            if (len(keyword) >= 4 and  # 4文字以上
+                not keyword.isdigit() and 
+                any(c.isalpha() for c in keyword) and
+                not keyword.lower().startswith(('http', 'www', 'com', 'org', 'net', 'html', 'htm', 'php', 'asp', 'jsp', 'css')) and
+                not keyword.endswith(('jpg', 'png', 'gif', 'pdf', 'doc', 'mp3', 'mp4', 'avi')) and
+                # 少なくとも1つの子音を含む（より意味のある語彙）
+                any(c in 'bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ' for c in keyword) and
+                # 少なくとも1つの母音を含む
+                any(c in 'aeiouAEIOU' for c in keyword) and
+                # 特殊パターンの除外
+                not re.match(r'^[^a-zA-Z一-龯あ-んア-ン]*$', keyword) and
+                not re.match(r'^[0-9]+[a-zA-Z]*$', keyword) and
+                not re.match(r'^[a-zA-Z]*[0-9]+$', keyword)):
+                quality_filtered.append((keyword, count))
+        
+        selected_keywords.extend(quality_filtered[:remaining_slots])
+    
+    logger.info(f"Selected {len(selected_keywords)} topics: {[k[0] for k in selected_keywords]}")
+    
+    # 選択されたキーワードからトピックデータを生成
     topics = []
-    for keyword, count in keyword_counts.most_common(50):  # 上位50個を分析
-        if count < 1:  # 最小出現回数を1に変更（より多くのトピックを検出）
-            continue
-            
+    for keyword, count in selected_keywords:
         sentiment_data = sentiment_by_keyword.get(keyword, {})
         
         # 感情データが空の場合はデフォルト値を設定
@@ -1191,9 +1316,12 @@ async def _analyze_trending_topics(posts: List[Post], db: Session) -> Dict[str, 
     # トレンドスコアでソート
     topics.sort(key=lambda x: x["trend_score"], reverse=True)
     
-    logger.info(f"Generated {len(topics)} trending topics")
+    # 常に10個のトピックを返す
+    final_topics = topics[:10]
     
-    return {"topics": topics}
+    logger.info(f"Generated {len(final_topics)} trending topics (from {len(topics)} candidates)")
+    
+    return {"topics": final_topics}
 
 
 async def _analyze_topic_details(topic: str, posts: List[Post], db: Session) -> Dict[str, Any]:
@@ -1237,35 +1365,76 @@ async def _analyze_topic_details(topic: str, posts: List[Post], db: Session) -> 
 
 
 def _extract_keywords_from_content(content: str) -> List[str]:
-    """投稿内容からキーワードを抽出"""
+    """投稿内容からキーワードを抽出 - 改良版"""
     if not content:
         return []
     
-    # 基本的なクリーニング
-    content = re.sub(r'https?://\S+', '', content)  # URL除去
+    # 包括的なクリーニング
+    content = re.sub(r'https?://[^\s<>"\']+', '', content)  # URL除去
     content = re.sub(r'@\w+', '', content)  # メンション除去
     content = re.sub(r'#(\w+)', r'\1', content)  # ハッシュタグからキーワード抽出
+    content = re.sub(r'<[^>]*>', '', content)  # HTMLタグ除去
+    content = re.sub(r'\s+', ' ', content)  # 複数空白を単一空白に
+    content = re.sub(r'[^\w\s一-龯あ-んア-ン]', ' ', content)  # 特殊文字除去
+    content = content.strip()
     
-    # 日本語と英語のキーワード抽出（簡易実装）
+    # 日本語と英語のキーワード抽出
     keywords = []
     
     # 日本語キーワード（2文字以上のひらがな・カタカナ・漢字）
     jp_pattern = r'[あ-んア-ン一-龯]{2,}'
     jp_keywords = re.findall(jp_pattern, content)
+    
+    # 拡張された日本語ストップワード
+    jp_stop_words = {
+        'です', 'ます', 'する', 'した', 'ある', 'ない', 'れる', 'られる', 
+        'これ', 'それ', 'あれ', 'どれ', 'こと', 'もの', 'よう', 'みたい',
+        'いう', 'なる', 'くる', 'もう', 'いる', 'ある', 'する', 'なら',
+        'から', 'まで', 'より', 'ので', 'けど', 'だけ', 'でも', 'って',
+        'という', 'とか', 'とは', 'には', 'での', 'への', 'からの',
+        'まあ', 'やっぱり', 'やはり', 'ちょっと', 'ずっと', 'もっと',
+        'ちゃん', 'さん', 'くん', 'っぽい', 'みたい', 'らしい'
+    }
+    jp_keywords = [kw for kw in jp_keywords if kw not in jp_stop_words and len(kw) >= 2]
     keywords.extend(jp_keywords)
     
     # 英語キーワード（3文字以上）
     en_pattern = r'\b[A-Za-z]{3,}\b'
     en_keywords = re.findall(en_pattern, content)
-    keywords.extend([kw.lower() for kw in en_keywords])
     
-    # よくある無意味な単語を除外
-    stop_words = {'です', 'ます', 'する', 'した', 'ある', 'ない', 'れる', 'られる', 
-                  'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with'}
+    # 包括的な英語ストップワードリスト
+    en_stop_words = {
+        # 基本的な英語ストップワード
+        'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'has', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'get', 'man', 'own', 'say', 'she', 'too', 'use',
+        # 追加の基本ストップワード
+        'that', 'this', 'with', 'they', 'will', 'have', 'from', 'been', 'were', 'said', 'each', 'which', 'there', 'what', 'would', 'about', 'after', 'first', 'never', 'these', 'think', 'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those', 'under', 'while', 'could', 'state', 'should', 'over', 'such', 'way', 'many', 'then', 'them', 'well', 'much', 'your', 'any', 'him', 'let', 'put', 'end', 'why', 'try', 'god', 'six', 'dog', 'eat', 'ago', 'sit', 'fun', 'bad', 'yes', 'yet', 'arm', 'far', 'off', 'ill', 'red', 'top', 'add', 'big', 'hot', 'nor', 'pot', 'cut', 'got', 'ran', 'run', 'son', 'sun', 'war', 'win', 'won', 'ask', 'buy', 'car', 'cry', 'die', 'eye', 'fly', 'job', 'key', 'lay', 'lot', 'oil', 'pay', 'sea', 'sky', 'ten', 'bit', 'box', 'cat', 'cup', 'few', 'hit', 'ice', 'lie', 'low', 'mix', 'net', 'pan', 'pop', 'set', 'tax', 'tip', 'zoo',
+        # 動詞・形容詞・副詞
+        'like', 'look', 'make', 'take', 'come', 'give', 'know', 'think', 'want', 'work', 'feel', 'seem', 'call', 'keep', 'turn', 'show', 'move', 'live', 'mean', 'leave', 'right', 'good', 'long', 'little', 'other', 'back', 'sure', 'become', 'help', 'hand', 'part', 'child', 'woman', 'place', 'week', 'case', 'point', 'number', 'group', 'problem', 'fact', 'study', 'book', 'word', 'issue', 'side', 'kind', 'head', 'house', 'service', 'friend', 'father', 'power', 'hour', 'game', 'line', 'member', 'law', 'city', 'name', 'team', 'idea', 'body', 'information', 'nothing', 'money', 'story', 'today', 'water', 'away', 'against', 'sound', 'real', 'upon', 'read', 'change', 'play', 'spell', 'air', 'land', 'here', 'must', 'even', 'because', 'went', 'men', 'need', 'different', 'home', 'again', 'picture', 'animal', 'page', 'letter', 'mother', 'answer', 'found', 'learn', 'america', 'world',
+        # Web・HTML関連
+        'href', 'http', 'https', 'www', 'com', 'org', 'net', 'html', 'htm', 'php', 'asp', 'jsp', 'css', 'div', 'span', 'img', 'src', 'alt', 'title', 'class', 'style', 'link', 'script', 'meta', 'head', 'body', 'form', 'input', 'button', 'textarea', 'select', 'option', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'br', 'hr', 'pre', 'code', 'blockquote', 'address', 'cite', 'abbr', 'acronym', 'ins', 'del',
+        # HTMLエンティティ
+        'quot', 'amp', 'apos', 'lt', 'gt', 'nbsp', 'iexcl', 'cent', 'pound', 'curren', 'yen', 'brvbar', 'sect', 'uml', 'copy', 'ordf', 'laquo', 'shy', 'reg', 'macr', 'deg', 'plusmn', 'sup2', 'sup3', 'acute', 'micro', 'para', 'middot', 'cedil', 'sup1', 'ordm', 'raquo', 'frac14', 'frac12', 'frac34', 'iquest',
+        # 意味の薄い単語
+        'time', 'just', 'only', 'also', 'very', 'some', 'more', 'most', 'than', 'into', 'when', 'where', 'does', 'don', 'can', 'will', 'would', 'should', 'could', 'might', 'must', 'may', 'shall', 'going', 'getting', 'having', 'making', 'doing', 'saying', 'looking', 'coming', 'thinking', 'working', 'feeling', 'knowing', 'taking', 'giving', 'really', 'quite', 'almost', 'always', 'never', 'sometimes', 'often', 'usually', 'already', 'still', 'again', 'once', 'twice', 'three', 'four', 'five', 'first', 'second', 'third', 'last', 'next', 'best', 'better', 'worst', 'worse', 'same', 'different', 'small', 'large', 'short', 'long', 'high', 'low', 'early', 'late', 'young', 'old', 'hot', 'cold', 'fast', 'slow', 'easy', 'hard', 'light', 'dark', 'full', 'empty', 'open', 'close', 'left', 'right', 'black', 'white', 'red', 'blue', 'green', 'yellow', 'brown', 'pink', 'purple', 'orange', 'grey', 'gray'
+    }
     
-    filtered_keywords = [kw for kw in keywords if kw not in stop_words and len(kw) >= 2]
+    en_keywords = [kw.lower() for kw in en_keywords if kw.lower() not in en_stop_words and len(kw) >= 3 and not kw.isdigit()]
+    keywords.extend(en_keywords)
     
-    return filtered_keywords
+    # 最終的な品質チェック
+    filtered_keywords = []
+    for kw in keywords:
+        if (len(kw) >= 2 and 
+            not kw.isdigit() and 
+            not kw.replace('.', '').isdigit() and  # 小数点数字もチェック
+            any(c.isalpha() for c in kw) and
+            not kw.lower().startswith(('http', 'www', 'com', 'org', 'net')) and
+            not re.match(r'^[0-9]+$', kw) and  # 数字のみのパターン
+            not re.match(r'^[^a-zA-Z一-龯あ-んア-ン]+$', kw)):  # 記号のみのパターン
+            filtered_keywords.append(kw.lower())  # 小文字に統一
+    
+    # 重複を除去
+    return list(set(filtered_keywords))
 
 
 async def _get_sentiment_by_keywords(posts: List[Post], db: Session) -> Dict[str, Dict]:
@@ -1304,21 +1473,33 @@ async def _get_sentiment_by_keywords(posts: List[Post], db: Session) -> Dict[str
 
 
 def _calculate_trend_score(mention_count: int, sentiment_data: Dict) -> float:
-    """トレンドスコアを計算"""
+    """トレンドスコア計算 - 改良版"""
     # 基本スコア（出現回数ベース）
-    base_score = min(mention_count / 10.0, 10.0)  # 最大10点
+    base_score = min(mention_count * 2.0, 20.0)  # 出現回数に重みを増加
     
     # 感情スコア調整
     total_sentiment = sentiment_data.get("positive", 0) + sentiment_data.get("negative", 0) + sentiment_data.get("neutral", 0)
     if total_sentiment > 0:
         positive_ratio = sentiment_data.get("positive", 0) / total_sentiment
-        engagement_bonus = positive_ratio * 2.0  # ポジティブな反応にボーナス
+        negative_ratio = sentiment_data.get("negative", 0) / total_sentiment
+        
+        # ポジティブ・ネガティブどちらも話題性として評価
+        engagement_bonus = (positive_ratio * 3.0) + (negative_ratio * 2.0)  # ポジティブにより高い重み
     else:
         engagement_bonus = 0
     
+    # 出現頻度に基づく追加ボーナス
+    frequency_bonus = 0
+    if mention_count >= 5:
+        frequency_bonus = 5.0
+    elif mention_count >= 3:
+        frequency_bonus = 3.0
+    elif mention_count >= 2:
+        frequency_bonus = 1.0
+    
     # 最終スコア
-    final_score = base_score + engagement_bonus
-    return round(final_score, 2)
+    final_score = base_score + engagement_bonus + frequency_bonus
+    return round(min(final_score, 50.0), 2)  # 最大50点にキャップ
 
 
 def _calculate_recent_activity(keyword: str, posts: List[Post]) -> Dict[str, Any]:

@@ -98,3 +98,10 @@ dev-dependencies = [
 
 [tool.uv.sources]
 # カスタムインデックスURLがある場合はここに記載
+
+[project.scripts]
+# Entry points for the application
+social-listening = "main:app"
+
+# Note: UV scripts are not supported in pyproject.toml
+# Use shell scripts or Makefile instead
