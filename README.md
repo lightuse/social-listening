@@ -443,7 +443,7 @@ docker compose logs -f
 uv sync
 
 # 2. データベース初期化
-python init_db.py
+uv python init_db.py
 
 # 3. 本番サーバー起動
 uvicorn main:app --host 0.0.0.0 --port 8002 --workers 4
